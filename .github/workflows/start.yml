@@ -33,23 +33,6 @@ jobs:
         run: |
           mkdir -p HisData docs data
 
-      - name: 删除2小时前的HisData文件夹
-        run: |
-          cd HisData
-          mapfile -t dirs < <(ls -d */ 2>/dev/null | sed 's#/$##' | sort)
-          total=${#dirs[@]}
-          keep=2
-          if [ "$total" -gt "$keep" ]; then
-            delete_count=$((total - keep))
-            for ((i=0; i<delete_count; i++)); do
-              echo "删除文件夹: ${dirs[i]}"
-              rm -rf "${dirs[i]}"
-            done
-            echo "已删除 $delete_count 个旧文件夹，保留最新 $keep 个"
-          else
-            echo "当前共 $total 个文件夹，未超过 $keep 个，无需删除"
-          fi
-
       - name: 删除根目录旧XML文件
         run: find . -maxdepth 1 -name "*.xml" -type f -delete
 
@@ -130,9 +113,6 @@ jobs:
           fi
 
       # ---------- 运行分析脚本 ----------
-      - name: 生成 his_data.js
-        run: python parse_xml.py
-
       - name: 抓取 livescore 数据
         run: python fetch_livescore.py
 
@@ -150,16 +130,7 @@ jobs:
         continue-on-error: true
         run: python results_parser.py --input results.json --history history.csv --output history.csv
 
-      - name: 增量更新统计CSV
-        run: python stats_python.py --update --order first --data scripts/docs/his_data.js --output scripts/docs/stats.csv
-
-      - name: 运行价值扫描
-        env:
-          HIS_DATA: scripts/docs/his_data.js
-          OUT_CSV: scripts/docs/value_matches.csv
-        run: python value_scan.py
-
-      # ========== 上传到 Cloudflare R2（替换原来的 git commit） ==========
+        # ========== 上传到 Cloudflare R2（替换原来的 git commit） ==========
       - name: 安装 AWS CLI（通过 pip）
         run: |
           pip install awscli
@@ -185,14 +156,6 @@ jobs:
 
           # 复制根目录下的所有 XML 文件
           cp *.xml upload_latest/ 2>/dev/null || echo "⚠️ 没有 XML 文件"
-
-          # 复制 data 目录（如果存在且有内容）
-          [ -d "data" ] && [ "$(ls -A data)" ] && cp -r data/* upload_latest/data/ || echo "data 为空"
-
-          # 复制 scripts/docs 下的生成文件
-          [ -f "scripts/docs/his_data.js" ] && cp scripts/docs/his_data.js upload_latest/scripts/docs/
-          [ -f "scripts/docs/stats.csv" ] && cp scripts/docs/stats.csv upload_latest/scripts/docs/
-          [ -f "scripts/docs/value_matches.csv" ] && cp scripts/docs/value_matches.csv upload_latest/scripts/docs/
 
           # 复制根目录下的 CSV 文件
           [ -f "scores_now.csv" ] && cp scores_now.csv upload_latest/
