@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>泊松分布 λ 优化器 — 归一化版</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f7fa; --card: #fff; --border: #e0e4e8;
+    --text: #1a2332; --text2: #6b7a8f;
+    --primary: #2563eb; --primary-light: #dbeafe;
+    --red: #dc2626; --green: #16a34a; --gold: #d97706;
+    --radius: 12px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); padding: 24px; line-height:1.6;
+  }
+  .container { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size:1.5rem; margin-bottom:4px; }
+  .subtitle { color: var(--text2); margin-bottom:20px; font-size:0.9rem; }
+
+  .card {
+    background: var(--card); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 20px;
+    border: 1px solid var(--border);
+  }
+  .card-title {
+    font-size:0.85rem; font-weight:600; text-transform:uppercase;
+    letter-spacing:0.5px; color:var(--text2); margin-bottom:14px;
+  }
+
+  .line-row {
+    display: grid; grid-template-columns: 100px 1fr 1fr 80px 1fr;
+    gap: 10px; align-items: center; padding: 10px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .line-row.header {
+    font-size:0.75rem; color:var(--text2); font-weight:600;
+    text-transform:uppercase; padding: 4px 0; border-bottom: 2px solid var(--border);
+  }
+  .line-row input {
+    width:100%; padding:6px 8px; border:1px solid var(--border);
+    border-radius:6px; font-size:0.9rem; text-align:center;
+    outline:none; transition:border-color 0.2s;
+  }
+  .line-row input:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-light); }
+  .line-row .type-badge {
+    display:inline-block; padding:2px 8px; border-radius:4px;
+    font-size:0.75rem; font-weight:500;
+  }
+  .type-half { background:#e0f2fe; color:#0369a1; }
+  .type-integer { background:#fef3c7; color:#92400e; }
+  .type-quarter { background:#ede9fe; color:#5b21b6; }
+  .btn-remove {
+    background:none; border:1px solid #fca5a5; color:#dc2626;
+    border-radius:6px; cursor:pointer; padding:4px 10px; font-size:0.8rem;
+    transition: all 0.2s;
+  }
+  .btn-remove:hover { background:#fef2f2; }
+
+  .btn {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:7px 16px; border:none; border-radius:8px;
+    font-size:0.85rem; font-weight:500; cursor:pointer;
+    transition:background 0.2s;
+  }
+  .btn-primary { background:var(--primary); color:#fff; }
+  .btn-primary:hover { background:#1d4ed8; }
+  .btn-success { background:#16a34a; color:#fff; }
+  .btn-success:hover { background:#15803d; }
+
+  .flex { display:flex; }
+  .flex-center { align-items:center; justify-content:center; }
+  .gap-8 { gap:8px; }
+  .gap-12 { gap:12px; }
+  .mt-12 { margin-top:12px; }
+  .mt-16 { margin-top:16px; }
+  .mb-12 { margin-bottom:12px; }
+
+  .lambda-display { text-align:center; padding:20px; }
+  .lambda-value { font-size:3rem; font-weight:800; color:var(--primary); line-height:1.1; }
+  .lambda-label { font-size:0.9rem; color:var(--text2); margin-top:4px; }
+  .sse-value { font-size:0.85rem; color:var(--text2); margin-top:6px; }
+
+  .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+
+  table { width:100%; border-collapse:collapse; font-size:0.85rem; }
+  th { text-align:center; padding:8px 4px; font-weight:600; color:var(--text2); border-bottom:2px solid var(--border); font-size:0.75rem; }
+  td { text-align:center; padding:7px 4px; border-bottom:1px solid #f0f0f0; }
+  td:first-child, th:first-child { text-align:left; }
+  .positive { color:var(--red); } .negative { color:var(--green); } .neutral { color:var(--gold); }
+
+  .prob-bar-bg {
+    display:inline-block; width:70px; height:10px; background:#eee;
+    border-radius:5px; vertical-align:middle; margin-right:4px;
+  }
+  .prob-bar-fill { height:100%; border-radius:5px; transition:width 0.3s; }
+
+  .chart-box { position:relative; height:260px; width:100%; }
+
+  @media(max-width:700px) { .grid-2 { grid-template-columns:1fr; } .line-row { grid-template-columns:80px 1fr 1fr 60px 1fr; gap:6px; } }
+
+  .preset-btn { font-size:0.75rem; padding:4px 10px; border-radius:4px; border:1px solid var(--border); background:var(--card); cursor:pointer; transition:all 0.15s; }
+  .preset-btn:hover { border-color:var(--primary); color:var(--primary); }
+  .preset-btn.active { border-color:var(--primary); background:var(--primary-light); color:var(--primary); }
+
+  .note-box {
+    background:#fefce8; border:1px solid #fde68a; border-radius:8px;
+    padding:10px 14px; font-size:0.8rem; color:#92400e; line-height:1.6;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>⚽ 泊松 λ 优化器 <span style="font-size:0.9rem;font-weight:400;color:var(--text2)">归一化模型概率</span></h1>
+<p class="subtitle">总进球 X ~ Poisson(λ)。归一化后各盘口大/小概率和=1，与公平概率严格对标比较。</p>
+
+<!-- 快捷预设 -->
+<div class="flex gap-8 mb-12" style="flex-wrap:wrap">
+  <span style="font-size:0.8rem;color:var(--text2);line-height:30px">预设：</span>
+  <button class="preset-btn" onclick="loadPreset('A')">A: 2.5 / 2.75 / 3.0</button>
+  <button class="preset-btn" onclick="loadPreset('B')">B: 2.0 / 2.25 / 2.5</button>
+  <button class="preset-btn" onclick="loadPreset('C')">C: 3.0 / 3.25 / 3.5</button>
+  <button class="preset-btn" onclick="loadPreset('D')">D: 2.5 / 3.0 / 3.5</button>
+  <button class="preset-btn" onclick="loadPreset('E')">E: 1.5 / 1.75 / 2.0</button>
+</div>
+
+<!-- 盘口编辑器 -->
+<div class="card mb-12">
+  <div class="card-title">📋 盘口与赔率</div>
+  <div id="lineEditor">
+    <div class="line-row header">
+      <span>盘口值</span><span>大赔率</span><span>小赔率</span><span>类型</span><span style="text-align:center">操作</span>
+    </div>
+    <div id="lineRows"></div>
+  </div>
+  <div class="flex gap-8 mt-12">
+    <button class="btn btn-success" onclick="addLine()">＋ 添加盘口</button>
+    <button class="btn btn-primary" onclick="recalculate()">⟳ 重新计算</button>
+  </div>
+</div>
+
+<!-- 左: λ + 粘贴区（上下） | 右: 关键概率 -->
+<div class="mb-12" style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+  <div style="display:flex;flex-direction:column;gap:12px">
+    <div class="card lambda-display">
+      <div class="lambda-value" id="lambdaDisplay">—</div>
+      <div class="lambda-label">最优期望进球数 λ</div>
+      <div class="sse-value" id="sseDisplay"></div>
+    </div>
+    <div class="card" style="background:#f8fafc;border:1px dashed #94a3b8;flex:1">
+      <div class="card-title">📋 粘贴数据（从主表复制）</div>
+      <textarea id="pasteArea" style="width:100%;min-height:100px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:0.85rem;resize:vertical;outline:none;box-sizing:border-box" placeholder="在此粘贴复制的内容..."></textarea>
+      <div class="flex gap-8 mt-12">
+        <button class="btn btn-primary" onclick="parseAndFill()">🔍 解析并填充</button>
+        <button class="btn" style="background:#64748b;color:#fff" onclick="document.getElementById('pasteArea').value=''">清空</button>
+        <span id="parseStatus" style="font-size:0.8rem;color:var(--text2);line-height:34px;margin-left:8px"></span>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">关键概率 (λ = <span id="keyLambdaLabel">—</span>)</div>
+    <table><thead><tr><th style="text-align:left">事件</th><th>概率</th><th>可视化</th></tr></thead>
+    <tbody id="keyProbBody"></tbody></table>
+  </div>
+</div>
+
+<!-- 对比表 -->
+<div class="card mb-12">
+  <div class="card-title">各盘口概率对比</div>
+  <div class="note-box mb-12">
+    <strong>📌 归一化说明：</strong>半数盘原始概率已和=1；整数盘将走盘概率除去后重新分配；四分之一盘将半输半赢部分折算后归一。
+    归一化后模型概率 + 公平概率均和=1，偏差直接反映模型与市场的分歧。
+  </div>
+  <div style="overflow-x:auto">
+    <table>
+      <thead><tr>
+        <th>盘口</th><th>类型</th><th>方向</th><th>赔率</th><th>隐含概率</th>
+        <th>公平概率</th><th>模型(原始)</th><th>模型(归一)</th><th>偏差</th><th>可视化</th>
+      </tr></thead>
+      <tbody id="comparisonBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 图表 -->
+<div class="grid-2 mb-12">
+  <div class="card"><div class="card-title">进球数概率分布</div>
+    <div class="chart-box"><canvas id="distChart"></canvas></div>
+  </div>
+  <div class="card"><div class="card-title">模型(归一) vs 公平概率</div>
+    <div class="chart-box"><canvas id="scatterChart"></canvas></div>
+  </div>
+</div>
+
+<!-- 算法说明 -->
+<div class="card">
+  <div class="card-title">📐 算法说明</div>
+  <div style="font-size:0.85rem;line-height:1.8;color:var(--text2)">
+    <p><b>模型：</b>X ~ Poisson(λ)，P(X=k) = λ<sup>k</sup>·e<sup>−λ</sup>/k!</p>
+    <p><b>半数盘 (X.5)：</b>大 = X ≥ X+1，小 = X ≤ X</p>
+    <p><b>整数盘 (X.0)：</b>大 = X ≥ X+1，小 = X ≤ X−1，X=X 走盘 → 归一化到 {大,小}</p>
+    <p><b>四分之一盘 (X.25 / X.75)：</b>拆 (line−0.25, line+0.25) 各半仓 → 半输半赢折算后归一化</p>
+    <p><b>归一化公式：</b>P<sub>归一</sub>(大) = P<sub>原始</sub>(大) / [P<sub>原始</sub>(大)+P<sub>原始</sub>(小)]，P<sub>归一</sub>(小) 同理</p>
+    <p><b>目标：</b>argmin<sub>λ</sub> Σ(模型<sub>归一</sub> − 公平概率)²</p>
+  </div>
+</div>
+
+</div>
+
+<script>
+// ===== 概率函数 =====
+function pmf(lam, k) {
+  if (lam <= 0) return k === 0 ? 1 : 0;
+  let lp = -lam + k * Math.log(lam);
+  for (let i = 2; i <= k; i++) lp -= Math.log(i);
+  return Math.exp(lp);
+}
+function cdf(lam, k) { let s = 0; for (let i = 0; i <= k; i++) s += pmf(lam, i); return s; }
+function pAtLeast(lam, k) { return 1 - cdf(lam, k - 1); }
+function pAtMost(lam, k) { return cdf(lam, k); }
+
+function detectType(line) {
+  const d = Math.round((line % 1) * 100) / 100;
+  if (d === 0.5) return 'half';
+  if (d === 0.0) return 'integer';
+  if (d === 0.25 || d === 0.75) return 'quarter';
+  return null;
+}
+function typeLabel(t) {
+  return { half:'半数盘', integer:'整数盘', quarter:'四分之一盘' }[t] || t;
+}
+function typeClass(t) {
+  return { half:'type-half', integer:'type-integer', quarter:'type-quarter' }[t] || '';
+}
+
+// 半数盘
+function halfProbs(lam, line) {
+  return [pAtLeast(lam, Math.round(line + 0.5)), pAtMost(lam, Math.round(line - 0.5))];
+}
+// 整数盘
+function intProbs(lam, line) {
+  return [pAtLeast(lam, Math.round(line + 1)), pAtMost(lam, Math.round(line - 1))];
+}
+// 四分之一盘
+function qtrProbs(lam, line) {
+  const lo = line - 0.25, hi = line + 0.25;
+  const lt = detectType(lo), ht = detectType(hi);
+  const pLo = lt === 'half' ? halfProbs(lam, lo) : intProbs(lam, lo);
+  const pHi = ht === 'half' ? halfProbs(lam, hi) : intProbs(lam, hi);
+  return [0.5 * pLo[0] + 0.5 * pHi[0], 0.5 * pLo[1] + 0.5 * pHi[1]];
+}
+
+// 原始概率
+function lineProbsRaw(lam, line) {
+  const t = detectType(line);
+  if (t === 'half') return halfProbs(lam, line);
+  if (t === 'integer') return intProbs(lam, line);
+  return qtrProbs(lam, line);
+}
+
+// ★★★ 归一化概率 ★★★
+function lineProbsNorm(lam, line) {
+  const [r_o, r_u] = lineProbsRaw(lam, line);
+  const total = r_o + r_u;
+  return [r_o / total, r_u / total];
+}
+
+function fairProb(ov, un) {
+  const m = 1/ov + 1/un;
+  return [(1/ov)/m, (1/un)/m];
+}
+
+function objective(lam, lines) {
+  let total = 0;
+  for (const [lv, od] of Object.entries(lines)) {
+    const [fp_o, fp_u] = fairProb(od.over, od.under);
+    const [mp_o, mp_u] = lineProbsNorm(lam, parseFloat(lv));
+    total += (mp_o - fp_o)**2 + (mp_u - fp_u)**2;
+  }
+  return total;
+}
+
+function optimize(lines) {
+  let best = 2.5, bestV = Infinity;
+  for (let lam = 0.3; lam <= 8.0; lam += 0.01) {
+    const v = objective(lam, lines);
+    if (v < bestV) { bestV = v; best = lam; }
+  }
+  let a = Math.max(0.1, best - 0.5), b = best + 0.5;
+  const phi = (Math.sqrt(5) - 1) / 2;
+  let c = b - phi * (b - a), d = a + phi * (b - a);
+  let fc = objective(c, lines), fd = objective(d, lines);
+  for (let i = 0; i < 50; i++) {
+    if (Math.abs(b - a) < 1e-10) break;
+    if (fc < fd) { b = d; d = c; fd = fc; c = b - phi * (b - a); fc = objective(c, lines); }
+    else { a = c; c = d; fc = fd; d = a + phi * (b - a); fd = objective(d, lines); }
+  }
+  const lam = (a + b) / 2;
+  return { lam, sse: objective(lam, lines) };
+}
+
+// ===== 预设 =====
+const PRESETS = {
+  A: { 2.5:{over:1.68,under:2.12}, 2.75:{over:1.87,under:1.93}, 3:{over:2.12,under:1.68} },
+  B: { 2:{over:1.85,under:1.95}, 2.25:{over:1.90,under:1.90}, 2.5:{over:1.95,under:1.85} },
+  C: { 3:{over:1.80,under:2.00}, 3.25:{over:1.88,under:1.92}, 3.5:{over:1.95,under:1.85} },
+  D: { 2.5:{over:1.85,under:1.95}, 3:{over:1.95,under:1.85}, 3.5:{over:2.05,under:1.75} },
+  E: { 1.5:{over:1.75,under:2.05}, 1.75:{over:1.85,under:1.95}, 2:{over:1.95,under:1.85} },
+};
+let nextId = 0;
+
+function loadPreset(name) {
+  const p = PRESETS[name];
+  document.getElementById('lineRows').innerHTML = '';
+  nextId = 0;
+  for (const [line, odds] of Object.entries(p)) {
+    addLine(parseFloat(line), odds.over, odds.under);
+  }
+  recalculate();
+}
+
+function addLine(lineVal, overOdds, underOdds) {
+  if (lineVal === undefined) lineVal = 2.5;
+  if (overOdds === undefined) overOdds = 1.90;
+  if (underOdds === undefined) underOdds = 1.90;
+  const id = nextId++;
+  const rows = document.getElementById('lineRows');
+  const div = document.createElement('div');
+  div.className = 'line-row';
+  div.id = 'lr_' + id;
+  div.innerHTML = `
+    <input type="number" step="0.01" min="0" max="20" value="${lineVal}" class="line-val" oninput="updateType(${id});recalculate()">
+    <input type="number" step="0.01" min="1.01" max="100" value="${overOdds}" class="over-odds" oninput="recalculate()">
+    <input type="number" step="0.01" min="1.01" max="100" value="${underOdds}" class="under-odds" oninput="recalculate()">
+    <span class="type-badge" id="type_${id}">—</span>
+    <div style="text-align:center"><button class="btn-remove" onclick="removeLine(${id})">✕</button></div>
+  `;
+  rows.appendChild(div);
+  updateType(id);
+  return id;
+}
+
+function removeLine(id) {
+  const el = document.getElementById('lr_' + id);
+  if (el) { el.remove(); recalculate(); }
+}
+
+function updateType(id) {
+  const el = document.getElementById('lr_' + id);
+  if (!el) return;
+  const val = parseFloat(el.querySelector('.line-val').value);
+  const badge = document.getElementById('type_' + id);
+  const t = detectType(val);
+  if (t) { badge.textContent = typeLabel(t); badge.className = 'type-badge ' + typeClass(t); }
+  else { badge.textContent = '不支持'; badge.className = 'type-badge'; }
+}
+
+function getLines() {
+  const result = {};
+  document.querySelectorAll('.line-row:not(.header)').forEach(el => {
+    const lv = parseFloat(el.querySelector('.line-val').value);
+    const ov = parseFloat(el.querySelector('.over-odds').value);
+    const un = parseFloat(el.querySelector('.under-odds').value);
+    if (isFinite(lv) && isFinite(ov) && isFinite(un) && ov >= 1.01 && un >= 1.01) {
+      result[lv] = { over: ov, under: un };
+    }
+  });
+  return result;
+}
+
+let distChart, scatterChart;
+
+function recalculate() {
+  const lines = getLines();
+  if (Object.keys(lines).length === 0) return;
+
+  const result = optimize(lines);
+  const lam = result.lam;
+  const sse = result.sse;
+
+  document.getElementById('lambdaDisplay').textContent = lam.toFixed(4);
+  document.getElementById('keyLambdaLabel').textContent = lam.toFixed(4);
+  document.getElementById('sseDisplay').textContent = `SSE = ${sse.toFixed(6)}`;
+
+  // 对比表
+  const tb = document.getElementById('comparisonBody');
+  tb.innerHTML = '';
+  for (const [lv, odds] of Object.entries(lines).sort((a,b) => parseFloat(a[0]) - parseFloat(b[0]))) {
+    const t = detectType(parseFloat(lv));
+    const [r_o, r_u] = lineProbsRaw(lam, parseFloat(lv));
+    const [n_o, n_u] = lineProbsNorm(lam, parseFloat(lv));
+    const [fp_o, fp_u] = fairProb(odds.over, odds.under);
+
+    for (const [dir, oddsV, fp, normP, rawP] of [
+      ['大', odds.over, fp_o, n_o, r_o],
+      ['小', odds.under, fp_u, n_u, r_u],
+    ]) {
+      const imp = 1 / oddsV;
+      const dev = normP - fp;
+      const dc = dev > 0.003 ? 'positive' : dev < -0.003 ? 'negative' : 'neutral';
+      const bw = normP * 100;
+      const bc = dir === '大' ? '#dc2626' : '#16a34a';
+      tb.innerHTML += `<tr>
+        <td><strong>${parseFloat(lv).toFixed(2)}</strong></td>
+        <td><span class="type-badge ${typeClass(t)}">${typeLabel(t)}</span></td>
+        <td>${dir}</td><td>${oddsV.toFixed(3)}</td>
+        <td>${(imp*100).toFixed(2)}%</td>
+        <td>${(fp*100).toFixed(2)}%</td>
+        <td style="color:var(--text2)">${(rawP*100).toFixed(2)}%</td>
+        <td><strong>${(normP*100).toFixed(2)}%</strong></td>
+        <td class="${dc}">${dev >= 0 ? '+' : ''}${(dev*100).toFixed(2)}%</td>
+        <td style="text-align:left"><span class="prob-bar-bg"><span class="prob-bar-fill" style="width:${Math.min(bw,100)}%;background:${bc}"></span></span>${(normP*100).toFixed(1)}%</td>
+      </tr>`;
+    }
+  }
+
+  // 关键概率
+  const kb = document.getElementById('keyProbBody');
+  const items = [
+    ['X = 0', pmf(lam,0)], ['X = 1', pmf(lam,1)], ['X = 2', pmf(lam,2)],
+    ['X = 3', pmf(lam,3)], ['X = 4', pmf(lam,4)], ['X ≥ 5', 1-cdf(lam,4)],
+    ['X ≤ 2', cdf(lam,2)], ['X ≥ 3', 1-cdf(lam,2)], ['X ≥ 4', 1-cdf(lam,3)],
+  ];
+  kb.innerHTML = items.map(([lab, p]) => `
+    <tr><td style="font-weight:${lab.includes('≤')||lab.includes('≥')?'600':'400'}">${lab}</td>
+    <td>${(p*100).toFixed(2)}%</td>
+    <td style="text-align:left"><span class="prob-bar-bg"><span class="prob-bar-fill" style="width:${Math.min(p*100,100)}%;background:#2563eb"></span></span>${(p*100).toFixed(1)}%</td></tr>
+  `).join('');
+
+  // 分布图
+  const labels = []; const probs = [];
+  for (let k = 0; k <= 10; k++) { labels.push(k.toString()); probs.push(pmf(lam, k)); }
+  if (distChart) distChart.destroy();
+  distChart = new Chart(document.getElementById('distChart'), {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'P(X=k)', data:probs,
+      backgroundColor: probs.map((_,i) => i<=2?'rgba(22,163,74,0.7)':i===3?'rgba(217,119,6,0.7)':'rgba(220,38,38,0.7)'),
+      borderColor: probs.map((_,i) => i<=2?'#16a34a':i===3?'#d97706':'#dc2626'),
+      borderWidth:1, borderRadius:3 }]
+    },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false},
+        tooltip:{ callbacks:{ label:ctx => `P(X=${ctx.label}) = ${(ctx.parsed.y*100).toFixed(2)}%` } }
+      },
+      scales:{ y:{ beginAtZero:true, ticks:{ callback:v => (v*100).toFixed(0)+'%' } }, x:{ title:{display:true, text:'进球数'} } }
+    }
+  });
+
+  // 散点图（归一化 vs 公平）
+  const pts = [];
+  for (const [lv, odds] of Object.entries(lines)) {
+    const [fp_o, fp_u] = fairProb(odds.over, odds.under);
+    const [n_o, n_u] = lineProbsNorm(lam, parseFloat(lv));
+    pts.push({ label:`${lv} 大`, fair:fp_o, model:n_o });
+    pts.push({ label:`${lv} 小`, fair:fp_u, model:n_u });
+  }
+  if (scatterChart) scatterChart.destroy();
+  scatterChart = new Chart(document.getElementById('scatterChart'), {
+    type:'scatter',
+    data:{ datasets:[{
+      label:'(归一化)',
+      data: pts.map(d => ({ x:d.fair, y:d.model })),
+      backgroundColor: pts.map((_,i)=>i%2===0?'#dc2626':'#16a34a'),
+      pointRadius:8, pointHoverRadius:11,
+    }]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false},
+        tooltip:{ callbacks:{
+          title: items => pts[items[0].dataIndex].label,
+          label: ctx => `公平: ${(ctx.parsed.x*100).toFixed(2)}% → 归一模型: ${(ctx.parsed.y*100).toFixed(2)}%`
+        }}
+      },
+      scales:{ x:{ min:0, max:1, ticks:{ callback:v => (v*100).toFixed(0)+'%' }, title:{display:true, text:'公平概率'} },
+               y:{ min:0, max:1, ticks:{ callback:v => (v*100).toFixed(0)+'%' }, title:{display:true, text:'归一模型概率'} } }
+    }
+  });
+}
+
+// ===== 粘贴数据解析 =====
+function parseAndFill() {
+  const text = document.getElementById('pasteArea').value.trim();
+  if (!text) { document.getElementById('parseStatus').textContent = '⚠️ 请先粘贴数据'; return; }
+
+  const lines = text.split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 0; });
+
+  // 找到下一个数值行的索引
+  function nextNumber(start) {
+    var j = start;
+    while (j < lines.length && isNaN(parseFloat(lines[j]))) j++;
+    return j < lines.length ? j : -1;
+  }
+
+  var entries = [];
+  var i = 0;
+
+  while (i < lines.length) {
+    // 1. 读取 big odds
+    if (lines[i].indexOf('\t') !== -1) {
+      // TAB 行前半是 handicap，给上一个 entry
+      var hcap = parseFloat(lines[i].split('\t')[0].trim());
+      if (!isNaN(hcap) && entries.length > 0 && entries[entries.length - 1].handicap === null) {
+        entries[entries.length - 1].handicap = hcap;
+      }
+      var big = parseFloat(lines[i].split('\t')[1].trim());
+      if (isNaN(big) || big < 1.01) { i++; continue; }
+      var bigOdds = big;
+      var skipStart = i + 1;
+    } else {
+      var num = parseFloat(lines[i]);
+      if (isNaN(num)) { i++; continue; }
+      var bigOdds = num;
+      var skipStart = i + 1;
+    }
+
+    // 2. 跳过 3 行，找 small odds
+    var smIdx = nextNumber(skipStart + 3);
+    if (smIdx === -1) break;
+    var smallOdds = parseFloat(lines[smIdx]);
+
+    // 创建新 entry
+    entries.push({ handicap: null, big: bigOdds, small: smallOdds });
+
+    // 3. 跳过 3 行，找 handicap
+    var hcapIdx = nextNumber(smIdx + 1 + 3);
+
+    if (hcapIdx !== -1) {
+      if (lines[hcapIdx].indexOf('\t') !== -1) {
+        var hcap = parseFloat(lines[hcapIdx].split('\t')[0].trim());
+        if (!isNaN(hcap)) entries[entries.length - 1].handicap = hcap;
+        i = hcapIdx; // 下一轮处理这个 TAB 行（取出 nextBig）
+      } else {
+        var hcap = parseFloat(lines[hcapIdx]);
+        if (!isNaN(hcap)) entries[entries.length - 1].handicap = hcap;
+        i = hcapIdx + 1;
+      }
+    } else {
+      break;
+    }
+  }
+
+  // 过滤有效数据
+  var valid = [];
+  for (var ei = 0; ei < entries.length; ei++) {
+    var e = entries[ei];
+    if (isFinite(e.big) && isFinite(e.small) && e.big >= 1.01 && e.small >= 1.01) {
+      valid.push(e);
+    }
+  }
+  if (valid.length === 0) {
+    document.getElementById('parseStatus').textContent = '⚠️ 未能解析出有效盘口数据，请检查粘贴格式';
+    return;
+  }
+
+  // 填充到盘口编辑器
+  document.getElementById('lineRows').innerHTML = '';
+  nextId = 0;
+  for (var vi = 0; vi < valid.length; vi++) {
+    var e = valid[vi];
+    var hcap = (e.handicap !== null && isFinite(e.handicap)) ? e.handicap : 2.5;
+    addLine(hcap, e.big, e.small);
+  }
+  recalculate();
+
+  document.getElementById('parseStatus').textContent = '✅ 已解析 ' + valid.length + ' 条盘口数据并填充';
+}
+
+// 初始化
+loadPreset('A');
+</script>
+</body>
+</html>

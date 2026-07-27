@@ -1,0 +1,190 @@
+name: 百度网盘自动备份
+
+on:
+  workflow_dispatch:              # 允许手动触发
+
+jobs:
+  # ==================== 任务1: 下载和处理文件 ====================
+  process-files:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    
+    outputs:
+      timestamp: ${{ steps.set-time.outputs.timestamp }}
+      date: ${{ steps.set-time.outputs.date }}
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 设置北京时间
+        id: set-time
+        run: |
+          sudo timedatectl set-timezone Asia/Shanghai
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          DATE=$(date +%Y%m%d)
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "date=$DATE" >> $GITHUB_OUTPUT
+          echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
+          echo "DATE=$DATE" >> $GITHUB_ENV
+
+      - name: 创建文件夹结构
+        run: |
+          mkdir -p HisData
+          mkdir -p docs
+          mkdir -p data
+
+      - name: 删除前两天的HisData文件夹
+        run: |
+          cd HisData
+          two_days_ago=$(date -d "2 days ago" +%Y%m%d)
+          for dir in */; do
+            dirname=${dir%/}
+            dir_date=${dirname:0:8}
+            if [[ "$dir_date" == "$two_days_ago" ]]; then
+              echo "删除文件夹: $dirname"
+              rm -rf "$dirname"
+            fi
+          done
+      
+      - name: 删除根目录旧XML文件
+        run: find . -maxdepth 1 -name "*.xml" -type f -delete
+
+      - name: 下载最新XML
+        run: |
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+          curl -L -A "$UA" -o windrawwinfirsthalf.xml "https://www.macauslot.com/content/data/soccer/xml/odds/windrawwinfirsthalf.xml"
+          curl -L -A "$UA" -o odds_config.xml "https://www.macauslot.com/content/data/soccer/xml/odds/odds_config.xml"
+          curl -L -A "$UA" -o windrawwin.xml "https://www.macauslot.com/content/data/soccer/xml/odds/windrawwin.xml"
+          curl -L -A "$UA" -o halffull.xml "https://www.macauslot.com/content/data/soccer/xml/odds/halffull.xml"
+          curl -L -A "$UA" -o winodds.xml "https://www.macauslot.com/content/data/soccer/xml/odds/winodds.xml"
+          curl -L -A "$UA" -o overunder.xml "https://www.macauslot.com/content/data/soccer/xml/odds/overunder.xml"
+          curl -L -A "$UA" -o numberofgoals.xml "https://www.macauslot.com/content/data/soccer/xml/odds/numberofgoals.xml"
+          curl -L -A "$UA" -o correctscore.xml "https://www.macauslot.com/content/data/soccer/xml/odds/correctscore.xml"
+
+      - name: 验证下载完整性
+        run: |
+          ALL_FILES=("windrawwinfirsthalf.xml" "odds_config.xml" "windrawwin.xml" "halffull.xml" "winodds.xml" "overunder.xml" "numberofgoals.xml" "correctscore.xml")
+          for f in "${ALL_FILES[@]}"; do
+            if [ ! -s "$f" ]; then
+              echo "❌ 文件 $f 不存在或为空，下载失败"
+              exit 1
+            fi
+          done
+          echo "✅ 所有8个XML文件下载成功"
+
+      - name: 复制XML到HisData时间戳文件夹
+        run: |
+          ARCHIVE_DIR="HisData/${{ env.TIMESTAMP }}"
+          mkdir -p "$ARCHIVE_DIR"
+          cp *.xml "$ARCHIVE_DIR/"
+          echo "✅ 已复制到 $ARCHIVE_DIR"
+
+      - name: 提交下载更新
+        uses: EndBug/add-and-commit@v9
+        with:
+          author_name: Auto Bot
+          author_email: bot@example.com
+          message: "归档 ${{ env.TIMESTAMP }} 并更新最新XML"
+          add: "HisData/ *.xml"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies for analysis
+        run: pip install requests numpy pandas
+
+      - name: Generate his_data.js
+        run: python parse_xml.py
+
+      - name: 提交静态文件到仓库
+        uses: EndBug/add-and-commit@v9
+        with:
+          author_name: github-actions[bot]
+          author_email: github-actions[bot]@users.noreply.github.com
+          message: "Update static files [skip ci]"
+          add: "docs/his_data.js docs/index.html"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run analysis script
+        run: python bb.py
+
+      - name: Commit and push generated files
+        uses: EndBug/add-and-commit@v9
+        with:
+          author_name: github-actions[bot]
+          author_email: github-actions[bot]@users.noreply.github.com
+          message: "Auto update analysis result [skip ci]"
+          add: "data/"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 打包文件夹
+        run: |
+          zip -r "backup_${{ env.TIMESTAMP }}.zip" HisData docs data
+          echo "UPLOAD_FILE=backup_${{ env.TIMESTAMP }}.zip" >> $GITHUB_ENV
+          echo "✅ 已打包为 backup_${{ env.TIMESTAMP }}.zip"
+
+      - name: 上传打包文件
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-${{ steps.set-time.outputs.date }}
+          path: ${{ env.UPLOAD_FILE }}
+          retention-days: 1
+
+  # ==================== 任务2: 上传到百度网盘 ====================
+  upload-to-baidu:
+    runs-on: ubuntu-latest
+    needs: process-files
+    timeout-minutes: 10
+    
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+      
+      - name: 下载打包文件
+        uses: actions/download-artifact@v4
+        with:
+          name: backup-${{ needs.process-files.outputs.date }}
+          path: ./to_upload
+
+      - name: 安装Python依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip
+          pip install requests
+
+      - name: 执行百度网盘上传脚本
+        env:
+          BAIDU_ACCESS_TOKEN: ${{ secrets.BAIDU_ACCESS_TOKEN }}
+        run: |
+          python scripts/baidu_upload.py
+
+      - name: 发送微信通知
+        env:
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        run: |
+          if [ -z "$PUSHPLUS_TOKEN" ]; then
+            echo "未配置 PUSHPLUS_TOKEN，跳过微信通知"
+            exit 0
+          fi
+          
+          CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+          MESSAGE="【百度网盘备份通知】
+
+          ✅ 备份成功
+          📅 时间: ${CURRENT_TIME}
+          📦 内容: HisData / docs / data
+          ☁️ 位置: 百度网盘 /apps/autobackup/"
+          
+          curl -s -X POST "http://www.pushplus.plus/send" \
+            -H "Content-Type: application/json" \
+            -d "{\"token\":\"${PUSHPLUS_TOKEN}\",\"title\":\"备份完成\",\"content\":\"${MESSAGE}\"}"
+          
+          echo "✅ 通知已发送"

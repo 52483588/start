@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>球队进球数 λ 优化器 — 精确进球泊松模型</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:#f5f7fa; --card:#fff; --border:#e0e4e8;
+  --text:#1a2332; --text2:#6b7a8f;
+  --primary:#2563eb; --plight:#dbeafe;
+  --red:#dc2626; --green:#16a34a; --gold:#d97706;
+  --radius:12px; --shadow:0 1px 3px rgba(0,0,0,0.08);
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  background:var(--bg); color:var(--text); padding:24px; line-height:1.6;
+}
+.container { max-width:1000px; margin:0 auto; }
+h1 { font-size:1.5rem; margin-bottom:2px; }
+.subtitle { color:var(--text2); margin-bottom:20px; font-size:0.9rem; }
+
+.card { background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:20px; border:1px solid var(--border); }
+.card-title { font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--text2); margin-bottom:14px; }
+
+.odds-grid { display:grid; grid-template-columns: repeat(6, 1fr); gap:10px; margin-bottom:12px; }
+.odds-cell { text-align:center; }
+.odds-cell label { display:block; font-size:0.75rem; color:var(--text2); margin-bottom:4px; }
+.odds-cell input {
+  width:100%; padding:8px 4px; border:1px solid var(--border);
+  border-radius:6px; font-size:0.95rem; text-align:center; outline:none;
+  font-weight:600; transition:border-color 0.2s;
+}
+.odds-cell input:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--plight); }
+.odds-cell .goal-label { font-size:0.85rem; color:var(--text); font-weight:600; margin-bottom:2px; }
+
+.btn {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:8px 20px; border:none; border-radius:8px;
+  font-size:0.9rem; font-weight:500; cursor:pointer; transition:background 0.2s;
+}
+.btn-primary { background:var(--primary); color:#fff; }
+.btn-primary:hover { background:#1d4ed8; }
+.btn-outline { background:transparent; border:1px solid var(--border); color:var(--text); }
+.btn-outline:hover { background:#f0f0f0; }
+.flex { display:flex; }
+.gap-8 { gap:8px; } .gap-12 { gap:12px; }
+.mt-12 { margin-top:12px; } .mb-12 { margin-bottom:12px; }
+
+.result-card { text-align:center; padding:14px 20px; }
+.result-val { font-size:2.6rem; font-weight:800; color:var(--primary); line-height:1.1; }
+.result-label { font-size:0.8rem; color:var(--text2); margin-top:2px; }
+.result-sse { font-size:0.78rem; color:var(--text2); margin-top:4px; }
+
+.paste-card { background:#f8fafc; border:1px dashed #94a3b8; border-radius:var(--radius); padding:16px; flex:1; display:flex; flex-direction:column; }
+.paste-card .card-title { margin-bottom:8px; }
+.paste-area { width:100%; flex:1; min-height:70px; padding:10px; border:1px solid var(--border); border-radius:8px; font-family:monospace; font-size:0.82rem; resize:vertical; outline:none; box-sizing:border-box; }
+.paste-area:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--plight); }
+.left-col { display:flex; flex-direction:column; gap:12px; }
+
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+
+table { width:100%; border-collapse:collapse; font-size:0.85rem; }
+th { text-align:center; padding:8px 4px; font-weight:600; color:var(--text2); border-bottom:2px solid var(--border); font-size:0.75rem; }
+td { text-align:center; padding:7px 4px; border-bottom:1px solid #f0f0f0; }
+td:first-child, th:first-child { text-align:left; }
+.positive { color:var(--red); } .negative { color:var(--green); } .neutral { color:var(--gold); }
+
+.prob-bar-bg { display:inline-block; width:70px; height:10px; background:#eee; border-radius:5px; vertical-align:middle; margin-right:4px; }
+.prob-bar-fill { height:100%; border-radius:5px; transition:width 0.3s; }
+
+.chart-box { position:relative; height:260px; width:100%; }
+
+.note-box {
+  background:#fefce8; border:1px solid #fde68a; border-radius:8px;
+  padding:10px 14px; font-size:0.8rem; color:#92400e; line-height:1.6;
+}
+
+.preset-btn { font-size:0.75rem; padding:4px 10px; border-radius:4px; border:1px solid var(--border); background:var(--card); cursor:pointer; transition:all 0.15s; }
+.preset-btn:hover { border-color:var(--primary); color:var(--primary); }
+
+@media(max-width:700px) {
+  .odds-grid { grid-template-columns: repeat(3, 1fr); }
+  .grid-2 { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>⚽ 精确进球 λ 优化器</h1>
+<p class="subtitle">X ~ Poisson(λ)。根据球队"进球数"精确赔率反推最合理的期望进球 λ。</p>
+
+<!-- 预设 -->
+<div class="flex gap-8 mb-12" style="flex-wrap:wrap">
+  <span style="font-size:0.8rem;color:var(--text2);line-height:30px">预设赔率：</span>
+  <button class="preset-btn" onclick="loadPreset('A')">A: 用户示例</button>
+  <button class="preset-btn" onclick="loadPreset('B')">B: 高进球期望</button>
+  <button class="preset-btn" onclick="loadPreset('C')">C: 低进球期望</button>
+</div>
+
+<!-- 赔率输入 -->
+<div class="card mb-12">
+  <div class="card-title">📋 球队进球数赔率</div>
+  <div class="odds-grid" id="oddsGrid"></div>
+  <div class="flex gap-8">
+    <button class="btn btn-primary" onclick="recalculate()">⟳ 计算 λ</button>
+    <button class="btn btn-outline" onclick="resetDefaults()">↩ 恢复默认</button>
+  </div>
+</div>
+
+<!-- 结果 -->
+<div class="grid-2 mb-12">
+  <div class="left-col">
+    <div class="card result-card">
+      <div class="result-val" id="lambdaDisplay">—</div>
+      <div class="result-label">最优期望进球数 λ</div>
+      <div class="result-sse" id="sseDisplay"></div>
+    </div>
+    <div class="paste-card">
+      <div class="card-title">📋 粘贴进球数赔率</div>
+      <textarea class="paste-area" id="pasteArea" placeholder="在此粘贴赔率数据...
+支持格式示例：
+2.85 2.35 3.95 9.8 25 70
+或每行一个赔率"></textarea>
+      <div class="flex gap-8 mt-12">
+        <button class="btn btn-primary" onclick="parseAndFill()">🔍 解析并填充</button>
+        <button class="btn btn-outline" onclick="document.getElementById('pasteArea').value=''">清空</button>
+        <span id="parseStatus" style="font-size:0.8rem;color:var(--text2);line-height:34px;margin-left:4px"></span>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">概率分布 (λ = <span id="keyLambdaLabel">—</span>)</div>
+    <table><thead><tr><th style="text-align:left">进球数</th><th>概率</th><th>累积</th><th>可视化</th></tr></thead>
+    <tbody id="distBody"></tbody></table>
+  </div>
+</div>
+
+<!-- 对比表 -->
+<div class="card mb-12">
+  <div class="card-title">各赔率概率对比</div>
+  <div class="note-box mb-12">
+    <strong>📌</strong> 隐含概率 = 1/赔率；公平概率 = 剔除庄家抽水后归一化；模型概率 = Poisson(λ) 理论值。偏差 = 模型概率 − 公平概率。
+  </div>
+  <div style="overflow-x:auto">
+    <table>
+      <thead><tr>
+        <th>进球数</th><th>赔率</th><th>隐含概率</th>
+        <th>公平概率</th><th>模型概率</th><th>偏差</th><th>可视化</th>
+      </tr></thead>
+      <tbody id="comparisonBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 图表 -->
+<div class="grid-2 mb-12">
+  <div class="card"><div class="card-title">进球数概率分布</div>
+    <div class="chart-box"><canvas id="distChart"></canvas></div>
+  </div>
+  <div class="card"><div class="card-title">模型概率 vs 公平概率</div>
+    <div class="chart-box"><canvas id="scatterChart"></canvas></div>
+  </div>
+</div>
+
+<!-- 算法 -->
+<div class="card">
+  <div class="card-title">📐 算法说明</div>
+  <div style="font-size:0.85rem;line-height:1.8;color:var(--text2)">
+    <p><b>模型：</b>球队进球 X ~ Poisson(λ)，P(X=k) = λ<sup>k</sup>·e<sup>−λ</sup> / k!</p>
+    <p><b>赔率→公平概率：</b>margin = Σ(1/赔率<sub>i</sub>)，P<sub>公平</sub>(k) = (1/赔率<sub>k</sub>) / margin</p>
+    <p><b>5球及5球以上（尾项）：</b>P<sub>模型</sub>(X≥5) = 1 − P(X≤4)</p>
+    <p><b>目标：</b>argmin<sub>λ</sub> Σ(P<sub>模型</sub>(k) − P<sub>公平</sub>(k))²，网格搜索 + Brent 精调</p>
+  </div>
+</div>
+
+</div>
+
+<script>
+// ===== 概率函数 =====
+function pmf(lam, k) {
+  if (lam <= 0) return k === 0 ? 1 : 0;
+  let lp = -lam + k * Math.log(lam);
+  for (let i = 2; i <= k; i++) lp -= Math.log(i);
+  return Math.exp(lp);
+}
+function cdf(lam, k) { let s = 0; for (let i = 0; i <= k; i++) s += pmf(lam, i); return s; }
+
+// ===== 预设 =====
+const PRESETS = {
+  A: [2.85, 2.35, 3.95, 9.8, 25, 70],
+  B: [5.0, 3.5, 3.0, 4.5, 10, 25],
+  C: [2.0, 3.0, 8.0, 30, 80, 200],
+};
+
+// ===== 渲染赔率输入 =====
+const GOAL_LABELS = ['0球', '1球', '2球', '3球', '4球', '5球及5球以上'];
+const GOAL_SHORT = ['0', '1', '2', '3', '4', '5+'];
+
+function renderOdds(odds) {
+  const grid = document.getElementById('oddsGrid');
+  grid.innerHTML = GOAL_LABELS.map((lab, i) => `
+    <div class="odds-cell">
+      <div class="goal-label">${lab}</div>
+      <label>赔率</label>
+      <input type="number" step="0.01" min="1.01" max="10000" value="${odds[i]}" class="goal-odds" data-idx="${i}" oninput="recalculate()">
+    </div>
+  `).join('');
+}
+
+function getOdds() {
+  const inputs = document.querySelectorAll('.goal-odds');
+  return Array.from(inputs).map(inp => parseFloat(inp.value) || 1.01);
+}
+
+function loadPreset(name) {
+  renderOdds(PRESETS[name]);
+  recalculate();
+}
+
+function resetDefaults() {
+  loadPreset('A');
+}
+
+// ===== 优化 =====
+function fairProbs(odds) {
+  const implied = odds.map(o => 1 / o);
+  const margin = implied.reduce((a, b) => a + b, 0);
+  return implied.map(p => p / margin);
+}
+
+function modelProbs(lam) {
+  return [
+    pmf(lam, 0),
+    pmf(lam, 1),
+    pmf(lam, 2),
+    pmf(lam, 3),
+    pmf(lam, 4),
+    1 - cdf(lam, 4),
+  ];
+}
+
+function objective(lam, odds) {
+  const fp = fairProbs(odds);
+  const mp = modelProbs(lam);
+  let total = 0;
+  for (let i = 0; i < fp.length; i++) {
+    total += (mp[i] - fp[i]) ** 2;
+  }
+  return total;
+}
+
+function optimize(odds) {
+  // Grid search
+  let bestLam = 1.0, bestVal = Infinity;
+  for (let lam = 0.1; lam <= 6.0; lam += 0.01) {
+    const v = objective(lam, odds);
+    if (v < bestVal) { bestVal = v; bestLam = lam; }
+  }
+  // Golden-section refine
+  let a = Math.max(0.05, bestLam - 0.5), b = bestLam + 0.5;
+  const phi = (Math.sqrt(5) - 1) / 2;
+  let c = b - phi * (b - a), d = a + phi * (b - a);
+  let fc = objective(c, odds), fd = objective(d, odds);
+  for (let i = 0; i < 50; i++) {
+    if (Math.abs(b - a) < 1e-10) break;
+    if (fc < fd) { b = d; d = c; fd = fc; c = b - phi * (b - a); fc = objective(c, odds); }
+    else { a = c; c = d; fc = fd; d = a + phi * (b - a); fd = objective(d, odds); }
+  }
+  const lam = (a + b) / 2;
+  return { lam, sse: objective(lam, odds) };
+}
+
+// ===== 图表 =====
+let distChart, scatterChart;
+
+// ===== 渲染 =====
+function recalculate() {
+  const odds = getOdds();
+  const result = optimize(odds);
+  const lam = result.lam;
+  const sse = result.sse;
+
+  document.getElementById('lambdaDisplay').textContent = lam.toFixed(4);
+  document.getElementById('keyLambdaLabel').textContent = lam.toFixed(4);
+  document.getElementById('sseDisplay').textContent = `总平方误差 (SSE) = ${sse.toFixed(6)}`;
+
+  const fp = fairProbs(odds);
+  const mp = modelProbs(lam);
+
+  // 分布表
+  const db = document.getElementById('distBody');
+  let cum = 0;
+  db.innerHTML = GOAL_SHORT.map((lab, i) => {
+    const p = mp[i];
+    cum += p;
+    const bc = ['#2563eb','#3b82f6','#6366f1','#8b5cf6','#a855f7','#d946ef'];
+    return `<tr>
+      <td><strong>${i < 5 ? `${i}球` : '5+球'}</strong></td>
+      <td>${(p*100).toFixed(2)}%</td>
+      <td>${(cum*100).toFixed(2)}%</td>
+      <td style="text-align:left"><span class="prob-bar-bg"><span class="prob-bar-fill" style="width:${Math.min(p*100,100)}%;background:${bc[i]}"></span></span>${(p*100).toFixed(1)}%</td>
+    </tr>`;
+  }).join('');
+
+  // 对比表
+  const tb = document.getElementById('comparisonBody');
+  tb.innerHTML = GOAL_SHORT.map((lab, i) => {
+    const imp = 1 / odds[i];
+    const dev = mp[i] - fp[i];
+    const dc = dev > 0.003 ? 'positive' : dev < -0.003 ? 'negative' : 'neutral';
+    const bc = i < 5 ? '#2563eb' : '#d946ef';
+    return `<tr>
+      <td><strong>${i < 5 ? `${i}球` : '5+球'}</strong></td>
+      <td>${odds[i].toFixed(2)}</td>
+      <td>${(imp*100).toFixed(2)}%</td>
+      <td>${(fp[i]*100).toFixed(2)}%</td>
+      <td><strong>${(mp[i]*100).toFixed(2)}%</strong></td>
+      <td class="${dc}">${dev >= 0 ? '+' : ''}${(dev*100).toFixed(2)}%</td>
+      <td style="text-align:left"><span class="prob-bar-bg"><span class="prob-bar-fill" style="width:${Math.min(mp[i]*100,100)}%;background:${bc}"></span></span>${(mp[i]*100).toFixed(1)}%</td>
+    </tr>`;
+  }).join('');
+
+  // 分布图
+  const labels = GOAL_SHORT.map((l, i) => i < 5 ? `${i}球` : '5+球');
+  const bgColors = ['rgba(37,99,235,0.7)','rgba(59,130,246,0.7)','rgba(99,102,241,0.7)','rgba(139,92,246,0.7)','rgba(168,85,247,0.7)','rgba(217,70,239,0.7)'];
+  const bdColors = ['#2563eb','#3b82f6','#6366f1','#8b5cf6','#a855f7','#d946ef'];
+
+  if (distChart) distChart.destroy();
+  distChart = new Chart(document.getElementById('distChart'), {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'P(X=k)', data:mp,
+      backgroundColor: bgColors, borderColor: bdColors, borderWidth:1, borderRadius:3 }]
+    },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false},
+        tooltip:{ callbacks:{ label:ctx => `P(X=${ctx.label}) = ${(ctx.parsed.y*100).toFixed(2)}%` } }
+      },
+      scales:{ y:{ beginAtZero:true, ticks:{ callback:v => (v*100).toFixed(0)+'%' } }, x:{ title:{display:true, text:'进球数'} } }
+    }
+  });
+
+  // 散点图
+  const pts = GOAL_SHORT.map((lab, i) => ({ label: i < 5 ? `${i}球` : '5+球', fair: fp[i], model: mp[i] }));
+  if (scatterChart) scatterChart.destroy();
+  scatterChart = new Chart(document.getElementById('scatterChart'), {
+    type:'scatter',
+    data:{ datasets:[{
+      label:'概率点',
+      data: pts.map(d => ({ x:d.fair, y:d.model })),
+      backgroundColor: bgColors,
+      pointRadius:10, pointHoverRadius:13,
+    }]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false},
+        tooltip:{ callbacks:{
+          title: items => pts[items[0].dataIndex].label,
+          label: ctx => `公平: ${(ctx.parsed.x*100).toFixed(2)}% → 模型: ${(ctx.parsed.y*100).toFixed(2)}%`
+        }}
+      },
+      scales:{ x:{ min:0, max:0.5, ticks:{ callback:v => (v*100).toFixed(0)+'%' }, title:{display:true, text:'公平概率'} },
+               y:{ min:0, max:0.5, ticks:{ callback:v => (v*100).toFixed(0)+'%' }, title:{display:true, text:'模型概率'} } }
+    }
+  });
+}
+
+// ===== 粘贴数据解析 =====
+function parseAndFill() {
+  const text = document.getElementById('pasteArea').value.trim();
+  const status = document.getElementById('parseStatus');
+  if (!text) { status.textContent = '⚠️ 请先粘贴数据'; return; }
+
+  // 提取所有数字
+  const nums = text.split(/[\s,;\t\n\r]+/).map(s => parseFloat(s)).filter(n => isFinite(n) && n > 0);
+  if (nums.length < 6) {
+    status.textContent = '⚠️ 至少需要 6 个赔率，当前解析到 ' + nums.length + ' 个';
+    return;
+  }
+
+  // 取前 6 个
+  const odds = nums.slice(0, 6);
+
+  // 填充到输入框
+  const inputs = document.querySelectorAll('.goal-odds');
+  inputs.forEach((inp, i) => { inp.value = odds[i].toFixed(2); });
+
+  status.textContent = '✅ 已解析 ' + odds.length + ' 个赔率并填充';
+  recalculate();
+}
+
+// 初始化
+loadPreset('A');
+</script>
+</body>
+</html>

@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>历史盘口数据查询工具</title>
+<style>
+/* === 基础重置 === */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+body {
+  font-family: 'Microsoft YaHei','微软雅黑',Arial,sans-serif;
+  background: #f0f2f5;
+  color: #333;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* === 头部 === */
+.header {
+  background: linear-gradient(135deg,#1a3c6e,#2563a8);
+  color: white;
+  padding: 16px 24px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  flex-shrink: 0;
+}
+.header h1 { font-size: 20px; font-weight: 600; }
+.header p { font-size: 12px; opacity: 0.8; margin-top: 4px; }
+
+/* === 搜索区 === */
+.search-area {
+  background: white;
+  padding: 16px 24px;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.search-area label { font-weight: 600; white-space: nowrap; color: #555; }
+.search-area select,
+.search-area input {
+  border: 2px solid #ccc;
+  border-radius: 6px;
+  padding: 9px 12px;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s;
+  background: white;
+}
+.search-area select { min-width: 200px; cursor: pointer; }
+.search-area input { width: 260px; }
+.search-area select:focus,
+.search-area input:focus { border-color: #2563a8; }
+.search-area button {
+  background: #2563a8;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 24px;
+  font-size: 16px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+.search-area button:hover { background: #1a3c6e; }
+.search-area button.clear { background: #888; }
+.search-area button.clear:hover { background: #555; }
+.view-switch { margin-left: auto; display: flex; gap: 8px; }
+.view-switch button {
+  background: #4a6f8f;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 9px 18px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+}
+.view-switch button.active {
+  background: #1a3c6e;
+  box-shadow: inset 0 0 0 2px white;
+}
+
+/* === 滚动容器 === */
+.scrollable-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* === 比赛信息卡（固定顶部,显示选中赛事的元信息）=== */
+.match-info {
+  background: linear-gradient(135deg,#e8f4ff,#f0f7ff);
+  border-left: 4px solid #2563a8;
+  padding: 12px 24px;
+  margin: 12px 24px 0;
+  border-radius: 4px;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.match-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.match-info-row .info-label {
+  color: #888;
+  font-size: 12px;
+  font-weight: 500;
+}
+.match-info-row .info-value {
+  color: #1a3c6e;
+  font-weight: 700;
+  font-size: 15px;
+}
+.match-info-row .info-value.oc-home { color: #b91c1c; }
+.match-info-row .info-value.oc-away { color: #0e7490; }
+.match-info-row .info-sep {
+  color: #888;
+  font-weight: 700;
+  margin: 0 4px;
+  font-size: 13px;
+}
+
+/* === 图例 === */
+.legend {
+  display: flex;
+  gap: 18px;
+  padding: 10px 18px;
+  font-size: 13px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  background: white;
+  border-bottom: 1px solid #e0e0e0;
+  margin: 12px 24px 0;
+  border-radius: 4px;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; }
+.legend-color { width: 14px; height: 14px; border-radius: 2px; }
+
+/* === 视图容器 === */
+.view-ou, .view-win {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+.view-ou.active, .view-win.active { display: flex; }
+
+.no-result, .hint {
+  text-align: center;
+  padding: 60px;
+  color: #aaa;
+  font-size: 16px;
+}
+
+/* === 表格 === */
+.table-container {
+  flex: 1;
+  overflow: auto;
+  padding: 0 24px 12px 24px;
+  position: relative;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  font-size: 15px;
+  min-width: 1400px;
+}
+th {
+  padding: 12px 8px;
+  line-height: 1.2;
+  height: 48px;
+  text-align: center;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #ffffff !important;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+}
+thead tr:first-child th {
+  position: sticky;
+  top: 0;
+  z-index: 11;
+}
+.subheader-row th {
+  position: sticky;
+  top: 48px;
+  z-index: 10;
+  padding: 6px 4px;
+  height: auto;
+  color: #ffffff !important;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+}
+/* 表头分组底色 */
+thead tr:first-child th.group-ng      { background: #1e5c2e; }
+thead tr:first-child th.group-tg      { background: #5b3a70; }
+thead tr:first-child th.group-ou-base { background: #b52b2b; }
+thead tr:first-child th.group-ou-hv1  { background: #8b1a1a; }
+thead tr:first-child th.group-ou-hv2  { background: #6b1414; }
+thead tr:first-child th.group-win-base{ background: #2a6b5e; }
+thead tr:first-child th.group-win-hv1 { background: #1f5348; }
+thead tr:first-child th.group-win-hv2 { background: #153d34; }
+thead tr:first-child th:first-child   { background: #1a3c6e; }
+thead tr:first-child th.group-lam     { background: #3a6b8c; }
+.subheader-row th.group-ng            { background: #2d7a3f; }
+.subheader-row th.group-tg            { background: #754a90; }
+.subheader-row th.group-ou-base       { background: #c73e3e; }
+.subheader-row th.group-ou-hv1        { background: #a02828; }
+.subheader-row th.group-ou-hv2        { background: #801818; }
+.subheader-row th.group-win-base      { background: #3d8b7a; }
+.subheader-row th.group-win-hv1       { background: #2c6b5d; }
+.subheader-row th.group-win-hv2       { background: #1d5246; }
+
+/* === 单元格 === */
+td.ou-divider, th.ou-divider { border-right: 2px solid rgba(255,255,255,0.3); }
+td {
+  padding: 8px 6px;
+  text-align: center;
+  border-bottom: 1px solid #f0f0f0;
+  white-space: nowrap;
+  vertical-align: middle;
+  line-height: 1.5;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td {
+  background: #d0d8e8 !important;
+  outline: 1px solid #1a3c6e;
+}
+
+/* 赛前后背景 (色 + 图标双通道) */
+.time-before {
+  background-color: #d1ecf1 !important;
+  color: #0c5460 !important;
+  font-weight: 500;
+}
+.time-after {
+  background-color: #f5c6cb !important;
+  color: #721c24 !important;
+  font-weight: 500;
+}
+.time-before::before { content: "📅 "; }
+.time-after::before  { content: "🏁 "; }
+
+/* === 文本样式 === */
+.folder-cell { font-weight: 700; color: #1a3c6e; font-family: monospace; font-size: 12px; }
+.missing { color: #ccc; font-style: italic; font-size: 11px; }
+.ng-val   { color: #1e5c2e; font-weight: 500; }
+.tg-val   { color: #5b3a70; font-weight: 500; }
+.ou-val   { color: #8b0000; font-weight: 500; }
+.win-val  { color: #00695c; font-weight: 500; }
+
+.fp-line { color: #1565c0; font-size: 11px; font-weight: 400; margin-top: 3px; display: block; }
+.ev-line { font-size: 11px; font-weight: 600; margin-top: 3px; display: block; }
+.dev-line{ font-size: 11px; font-weight: 700; margin-top: 3px; display: block; }
+
+/* EV / 偏差用颜色 + 符号双通道 */
+.ev-pos { color: #d32f2f; }
+.ev-pos::before { content: "▲ "; }
+.ev-neg { color: #666; }
+.ev-neg::before { content: "▼ "; }
+.dev-pos { color: #000000; }
+.dev-pos::before { content: "+"; }
+.dev-neg { color: #dc2626; }
+.dev-neg::before { content: ""; }  /* 负数自带 - 号 */
+
+.changed { background: #fff3cd !important; }
+
+/* === Autocomplete === */
+.autocomplete-wrapper { position: relative; }
+.autocomplete-list {
+  position: absolute;
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 1000;
+  max-height: 250px;
+  overflow-y: auto;
+  min-width: 300px;
+  display: none;
+}
+.autocomplete-list div {
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.autocomplete-list div:hover,
+.autocomplete-list div:focus,
+.autocomplete-list div.active { background: #e8f4ff; outline: none; }
+.autocomplete-list div em { font-style: normal; color: #2563a8; font-weight: 600; }
+
+/* === 滚动条 === */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #f0f2f5; border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: #c0c8d0; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #a0a8b0; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>历史盘口数据查询工具</h1>
+  <p>读取所有时间戳文件夹 · 按时序对比 odds_config / numberofgoals / overunder / winodds · 自动计算EV与公平概率</p>
+</div>
+
+<div class="search-area">
+  <label for="leagueSelect">联赛：</label>
+  <select id="leagueSelect" aria-label="选择联赛">
+    <option value="">-- 请选择联赛 --</option>
+  </select>
+
+  <label for="searchInput">比赛：</label>
+  <div class="autocomplete-wrapper">
+    <input type="text" id="searchInput"
+           placeholder="先选择联赛，再输入/选择赛事ID或球队名"
+           autocomplete="off" disabled
+           aria-label="搜索比赛 ID 或球队名" />
+    <div class="autocomplete-list" id="autocomplete" role="listbox"></div>
+  </div>
+
+  <button id="btnSearch">查询</button>
+  <button id="btnClear" class="clear">清除</button>
+
+  <div class="view-switch" role="tablist">
+    <button id="btnOu"   class="active" role="tab" aria-selected="true">大小球盘口</button>
+    <button id="btnWin"  role="tab" aria-selected="false">让球盘口</button>
+  </div>
+
+  <button id="btnOuReport" hidden
+          style="background:#e67e22;color:#fff;border:none;border-radius:6px;padding:9px 18px;cursor:pointer;font-family:inherit;font-weight:700;font-size:15px;white-space:nowrap;"
+          title="生成大小球盘口分析报告">📊 盘口分析报告</button>
+
+  <span id="statusTip" style="color:#888; font-size:13px;" role="status" aria-live="polite"></span>
+</div>
+
+<div class="scrollable-container">
+  <div class="match-info" id="matchInfo" hidden>
+    <div class="match-info-row">
+      <span class="info-label">赛事ID</span>
+      <span class="info-value" id="infoId">-</span>
+      <span class="info-label">赛事时间</span>
+      <span class="info-value" id="infoTime">-</span>
+      <span class="info-label">联赛</span>
+      <span class="info-value" id="infoLeague">-</span>
+    </div>
+    <div class="match-info-row">
+      <span class="info-label">主队</span>
+      <span class="info-value oc-home" id="infoHome">-</span>
+      <span class="info-sep">vs</span>
+      <span class="info-label">客队</span>
+      <span class="info-value oc-away" id="infoAway">-</span>
+      <span class="info-label">共</span>
+      <span class="info-value" id="infoCount">0</span>
+      <span class="info-label">个时间点</span>
+    </div>
+  </div>
+
+  <div class="legend" id="legend" hidden>
+    <span style="color:#555; font-weight:600;">列色标：</span>
+    <span class="legend-item"><span class="legend-color" style="background:#1e5c2e"></span>进球分布赔率</span>
+    <span class="legend-item"><span class="legend-color" style="background:#5b3a70"></span>总进球/净胜球概率</span>
+    <span class="legend-item"><span class="legend-color" style="background:#7a1e1e"></span>大小球/让球赔率+公平P(蓝)+EV(红正)</span>
+    <span class="legend-item"><span class="legend-color" style="background:#fff3cd;border:1px solid #e0c060"></span>数值变化</span>
+    <span class="legend-item"><span class="legend-color" style="background:#d4edda;border:1px solid #155724"></span>📅 赛前快照</span>
+    <span class="legend-item"><span class="legend-color" style="background:#f8d7da;border:1px solid #721c24"></span>🏁 赛后快照</span>
+  </div>
+
+  <div class="view-ou active" id="viewOu" role="tabpanel">
+    <div class="no-result" id="noResultOu" hidden>未找到 ID 对应的记录</div>
+    <div class="hint" id="hintOu">请在上方输入赛事 ID 进行查询</div>
+    <div class="table-container" id="tableOu"></div>
+  </div>
+
+  <div class="view-win" id="viewWin" role="tabpanel">
+    <div class="no-result" id="noResultWin" hidden>未找到 ID 对应的记录</div>
+    <div class="hint" id="hintWin">请在上方输入赛事 ID 进行查询</div>
+    <div class="table-container" id="tableWin"></div>
+  </div>
+</div>
+
+<!-- 加载顺序：先 his_data (数据) → stats (纯函数) → app (UI) -->
+<script src="his_data.js"></script>
+<script src="stats.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

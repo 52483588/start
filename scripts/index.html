@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>历史盘口数据查询工具</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { 
+font-family: 'Microsoft YaHei','微软雅黑',Arial,sans-serif; 
+background: #f0f2f5; 
+color: #333; 
+min-height: 100vh;
+display: flex;
+flex-direction: column;
+height: 100vh;
+overflow: hidden;
+}
+
+.header { 
+background: linear-gradient(135deg,#1a3c6e,#2563a8); 
+color: white; 
+padding: 16px 24px; 
+box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+flex-shrink: 0;
+}
+.header h1 { font-size: 20px; font-weight: 600; }
+.header p { font-size: 12px; opacity: 0.8; margin-top: 4px; }
+
+.search-area { 
+background: white; 
+padding: 16px 24px; 
+border-bottom: 1px solid #e0e0e0; 
+display: flex; 
+align-items: center; 
+gap: 12px; 
+flex-wrap: wrap;
+flex-shrink: 0;
+}
+.search-area label { font-weight: 600; white-space: nowrap; color: #555; }
+.search-area select { border: 2px solid #ccc; border-radius: 6px; padding: 9px 12px; font-size: 15px; outline: none; transition: border-color 0.2s; background: white; min-width: 200px; cursor: pointer; }
+.search-area select:focus { border-color: #2563a8; }
+.search-area input { border: 2px solid #ccc; border-radius: 6px; padding: 9px 14px; font-size: 16px; width: 260px; outline: none; transition: border-color 0.2s; }
+.search-area input:focus { border-color: #2563a8; }
+.search-area button { background: #2563a8; color: white; border: none; border-radius: 6px; padding: 10px 24px; font-size: 16px; cursor: pointer; font-family: inherit; transition: background 0.2s; white-space: nowrap; }
+.search-area button:hover { background: #1a3c6e; }
+.search-area button.clear { background: #888; }
+.search-area button.clear:hover { background: #555; }
+.view-switch { margin-left: auto; display: flex; gap: 8px; }
+.view-switch button { background: #4a6f8f; color: white; border: none; border-radius: 6px; padding: 9px 18px; cursor: pointer; }
+.view-switch button.active { background: #1a3c6e; box-shadow: inset 0 0 0 2px white; }
+
+.scrollable-container {
+flex: 1;
+overflow-y: auto;
+overflow-x: hidden;
+display: flex;
+flex-direction: column;
+}
+
+.match-info { 
+background: #e8f4ff; 
+border-left: 4px solid #2563a8; 
+padding: 12px 18px; 
+margin: 12px 24px 0; 
+border-radius: 4px; 
+font-size: 14px; 
+display: none;
+flex-shrink: 0;
+}
+.match-info .match-title { font-size: 16px; font-weight: 700; color: #1a3c6e; margin-bottom: 4px; }
+.match-info .meta { color: #555; }
+
+.legend { 
+display: flex; 
+gap: 18px; 
+padding: 10px 18px; 
+font-size: 13px; 
+flex-wrap: wrap;
+flex-shrink: 0;
+background: white;
+border-bottom: 1px solid #e0e0e0;
+margin: 12px 24px 0;
+border-radius: 4px;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; }
+.legend-color { width: 14px; height: 14px; border-radius: 2px; }
+
+.view-ou, .view-win { 
+display: none;
+flex: 1;
+flex-direction: column;
+overflow: hidden;
+}
+.view-ou.active, .view-win.active { 
+display: flex;
+}
+
+.no-result, .hint { 
+text-align: center; 
+padding: 60px; 
+color: #aaa; 
+font-size: 16px; 
+}
+
+.table-container { 
+flex: 1;
+overflow: auto;
+padding: 0 24px 12px 24px;
+position: relative;
+}
+
+table { 
+width: 100%; 
+border-collapse: collapse; 
+background: white; 
+border-radius: 8px; 
+font-size: 15px; 
+min-width: 1400px;
+}
+
+th {
+padding: 12px 8px;
+line-height: 1.2;
+height: 48px;
+box-sizing: border-box;
+text-align: center;
+font-weight: 600;
+white-space: nowrap;
+color: #ffffff !important;
+text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+}
+
+thead tr:first-child th {
+position: sticky;
+top: 0;
+z-index: 11;
+}
+
+.subheader-row th {
+position: sticky;
+top: 48px;
+z-index: 10;
+padding: 6px 4px;
+height: auto;
+color: #ffffff !important;
+text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+}
+
+thead tr:first-child th.group-ng { background: #1e5c2e; }
+thead tr:first-child th.group-tg { background: #5b3a70; }
+thead tr:first-child th.group-ou-base { background: #b52b2b; }
+thead tr:first-child th.group-ou-hv1 { background: #8b1a1a; }
+thead tr:first-child th.group-ou-hv2 { background: #6b1414; }
+thead tr:first-child th.group-win-base { background: #2a6b5e; }
+thead tr:first-child th.group-win-hv1 { background: #1f5348; }
+thead tr:first-child th.group-win-hv2 { background: #153d34; }
+
+thead tr:first-child th:first-child { background: #1a3c6e; }
+thead tr:first-child th.group-lam { background: #3a6b8c; }
+
+.subheader-row th.group-ng { background: #2d7a3f; }
+.subheader-row th.group-tg { background: #754a90; }
+.subheader-row th.group-ou-base { background: #c73e3e; }
+.subheader-row th.group-ou-hv1 { background: #a02828; }
+.subheader-row th.group-ou-hv2 { background: #801818; }
+.subheader-row th.group-win-base { background: #3d8b7a; }
+.subheader-row th.group-win-hv1 { background: #2c6b5d; }
+.subheader-row th.group-win-hv2 { background: #1d5246; }
+
+.time-before {
+background-color: #d1ecf1 !important;
+color: #0c5460 !important;
+font-weight: 500;
+}
+
+.time-after {
+background-color: #f5c6cb !important;
+color: #721c24 !important;
+font-weight: 500;
+}
+
+td.ou-divider, th.ou-divider { border-right: 2px solid rgba(255,255,255,0.3); }
+td { 
+padding: 8px 6px; 
+text-align: center; 
+border-bottom: 1px solid #f0f0f0; 
+white-space: nowrap; 
+vertical-align: middle; 
+line-height: 1.5;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { 
+background: #d0d8e8 !important;
+outline: 1px solid #1a3c6e;
+}
+.folder-cell { font-weight: 700; color: #1a3c6e; font-family: monospace; font-size: 12px; }
+.missing { color: #ccc; font-style: italic; font-size: 11px; }
+
+.ng-val { color: #1e5c2e; font-weight: 500; }
+.tg-val { color: #5b3a70; font-weight: 500; }
+.ou-val { color: #8b0000; font-weight: 500; }
+.win-val { color: #00695c; font-weight: 500; }
+.fp-line { color: #1565c0; font-size: 11px; font-weight: 400; margin-top: 3px; display: block; }
+.ev-line { font-size: 11px; font-weight: 600; margin-top: 3px; display: block; }
+.ev-pos { color: #d32f2f; }
+.ev-neg { color: #666; }
+.dev-line { font-size: 11px; font-weight: 700; margin-top: 3px; display: block; }
+.dev-pos { color: #000000; }
+.dev-neg { color: #dc2626; }
+
+.changed { background: #fff3cd !important; }
+
+.autocomplete-list { 
+position: absolute; 
+background: white; 
+border: 1px solid #ccc; 
+border-radius: 4px; 
+box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
+z-index: 1000; 
+max-height: 250px; 
+overflow-y: auto; 
+min-width: 300px; 
+}
+.autocomplete-list div { padding: 9px 12px; cursor: pointer; font-size: 14px; border-bottom: 1px solid #f0f0f0; }
+.autocomplete-list div:hover { background: #e8f4ff; }
+.autocomplete-list div em { font-style: normal; color: #2563a8; font-weight: 600; }
+.autocomplete-wrapper { position: relative; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #f0f2f5; border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: #c0c8d0; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #a0a8b0; }
+
+</style>
+</head>
+<body>
+
+<div class="header">
+<h1>历史盘口数据查询工具</h1>
+<p>读取所有时间戳文件夹 · 按时序对比 odds_config / numberofgoals / overunder / winodds · 自动计算EV与公平概率</p>
+</div>
+
+<div class="search-area">
+<label>联赛：</label>
+<select id="leagueSelect" onchange="onLeagueChange()">
+<option value="">-- 请选择联赛 --</option>
+</select>
+<label>比赛：</label>
+<div class="autocomplete-wrapper">
+<input type="text" id="searchInput" placeholder="先选择联赛，再输入/选择赛事ID或球队名" autocomplete="off" disabled />
+<div class="autocomplete-list" id="autocomplete" style="display:none"></div>
+</div>
+<button onclick="doSearch()">查询</button>
+<button class="clear" onclick="doClear()">清除</button>
+<div class="view-switch">
+<button id="btnOu" class="active" onclick="switchView('ou')">大小球盘口</button>
+<button id="btnWin" onclick="switchView('win')">让球盘口</button>
+</div>
+<button onclick="generateOuReport()" id="btnOuReport" style="background:#e67e22;color:#fff;border:none;border-radius:6px;padding:9px 18px;cursor:pointer;font-family:inherit;font-weight:700;font-size:15px;white-space:nowrap;display:none;" title="生成大小球盘口分析报告">📊 盘口分析报告</button>
+<span id="statusTip" style="color:#888; font-size:13px;"></span>
+</div>
+
+<div class="scrollable-container">
+<div class="match-info" id="matchInfo">
+<div class="match-title" id="matchTitle"></div>
+<div class="meta" id="matchMeta"></div>
+</div>
+
+<div class="legend" id="legend" style="display:none">
+<span style="color:#555; font-weight:600;">列色标：</span>
+<span class="legend-item"><span class="legend-color" style="background:#1e5c2e"></span>进球分布赔率</span>
+<span class="legend-item"><span class="legend-color" style="background:#5b3a70"></span>总进球/净胜球概率</span>
+<span class="legend-item"><span class="legend-color" style="background:#7a1e1e"></span>大小球/让球赔率+公平P(蓝)+EV(红正)</span>
+<span class="legend-item"><span class="legend-color" style="background:#fff3cd;border:1px solid #e0c060"></span>数值变化</span>
+<span class="legend-item"><span class="legend-color" style="background:#d4edda;border:1px solid #155724"></span>📅 赛前快照</span>
+<span class="legend-item"><span class="legend-color" style="background:#f8d7da;border:1px solid #721c24"></span>📅 赛后快照</span>
+</div>
+
+<div class="view-ou active" id="viewOu">
+<div class="no-result" id="noResultOu">未找到 ID 对应的记录</div>
+<div class="hint" id="hintOu">请在上方输入赛事 ID 进行查询</div>
+<div class="table-container" id="tableOu"></div>
+</div>
+
+<div class="view-win" id="viewWin">
+<div class="no-result" id="noResultWin">未找到 ID 对应的记录</div>
+<div class="hint" id="hintWin">请在上方输入赛事 ID 进行查询</div>
+<div class="table-container" id="tableWin"></div>
+</div>
+</div>
+
+<script src="his_data.js"></script>
+<script>
+
+var currentRows = [];
+var currentMatchId = '';
+
+function normalizeOdds(oddsArr) {
+var probs = [], sumInv = 0, invs = [];
+for (var i = 0; i < 6; i++) {
+var v = parseFloat(oddsArr[i]);
+if (isNaN(v) || v <= 0) v = 9999;
+var inv = 1 / v;
+invs.push(inv);
+sumInv += inv;
+}
+if (sumInv === 0) return [0.167,0.167,0.167,0.167,0.167,0.165];
+for (var i = 0; i < 6; i++) probs.push(invs[i] / sumInv);
+var s = probs.reduce(function(a,b){return a+b;},0);
+for (var i=0;i<6;i++) probs[i] /= s;
+return probs;
+}
+
+function calcTotalGoals(hp, ap) {
+var tg = new Array(8).fill(0);
+var h = hp, a = ap;
+tg[0] = (h[0]||0) * (a[0]||0);
+tg[1] = (h[0]||0)*(a[1]||0) + (h[1]||0)*(a[0]||0);
+tg[2] = (h[0]||0)*(a[2]||0) + (h[1]||0)*(a[1]||0) + (h[2]||0)*(a[0]||0);
+tg[3] = (h[0]||0)*(a[3]||0) + (h[1]||0)*(a[2]||0) + (h[2]||0)*(a[1]||0) + (h[3]||0)*(a[0]||0);
+tg[4] = (h[0]||0)*(a[4]||0) + (h[1]||0)*(a[3]||0) + (h[2]||0)*(a[2]||0) + (h[3]||0)*(a[1]||0) + (h[4]||0)*(a[0]||0);
+tg[5] = (h[0]||0)*(a[5]||0) + (h[1]||0)*(a[4]||0) + (h[2]||0)*(a[3]||0) + (h[3]||0)*(a[2]||0) + (h[4]||0)*(a[1]||0) + (h[5]||0)*(a[0]||0);
+tg[6] = (h[1]||0)*(a[5]||0) + (h[2]||0)*(a[4]||0) + (h[3]||0)*(a[3]||0) + (h[4]||0)*(a[2]||0) + (h[5]||0)*(a[1]||0);
+var sum06 = 0;
+for (var i = 0; i <= 6; i++) sum06 += tg[i];
+tg[7] = Math.max(0, 1 - sum06);
+return tg;
+}
+
+function calcGoalDiff(hp, ap) {
+var hProb = new Array(7).fill(0);
+var aProb = new Array(7).fill(0);
+var sumH = 0, sumA = 0;
+for (var i=0;i<6;i++) {
+hProb[i+1] = hp[i];
+aProb[i+1] = ap[i];
+sumH += hp[i];
+sumA += ap[i];
+}
+hProb[0] = Math.max(0, 1 - sumH);
+aProb[0] = Math.max(0, 1 - sumA);
+
+var gd = new Array(13).fill(0);
+for (var hg=0; hg<=6; hg++) {
+for (var ag=0; ag<=6; ag++) {
+var idx = hg - ag + 6;
+gd[idx] += hProb[hg] * aProb[ag];
+}
+}
+
+var result = new Array(9).fill(0);
+for (var d=-6; d<=6; d++) {
+var val = gd[d+6];
+if (d < -4) result[0] += val;
+else if (d > 4) result[8] += val;
+else result[d+4] += val;
+}
+return result;
+}
+
+function calcAsianEV(handicap, overOdds, underOdds, totalProb) {
+var intPart = Math.floor(handicap);
+var frac = Math.round((handicap - intPart) * 100) / 100;
+var pOver = 0, pPush = 0, pUnder = 0;
+
+if (Math.abs(frac - 0.5) < 0.01) {
+for (var g = 0; g < 7; g++) { if (g > handicap) pOver += totalProb[g]; }
+pOver += totalProb[7];
+pUnder = 1 - pOver;
+} else if (Math.abs(frac) < 0.01 || Math.abs(frac - 0.0) < 0.01) {
+for (var g = 0; g < 7; g++) {
+if (g > handicap) pOver += totalProb[g];
+else if (Math.abs(g - handicap) < 0.01) pPush += totalProb[g];
+}
+pOver += totalProb[7];
+pUnder = 1 - pOver - pPush;
+} else if (Math.abs(frac - 0.25) < 0.01 || Math.abs(frac - 0.75) < 0.01) {
+var lo, hi;
+if (frac < 0.5) { lo = intPart; hi = intPart + 0.5; }
+else { lo = intPart + 0.5; hi = intPart + 1.0; }
+var rL = calcAsianEV(lo, overOdds, underOdds, totalProb);
+var rH = calcAsianEV(hi, overOdds, underOdds, totalProb);
+return {
+evOver: (rL.evOver + rH.evOver) / 2,
+evUnder: (rL.evUnder + rH.evUnder) / 2,
+fairOver: ((rL.evOver + rH.evOver)/2 + 1) / overOdds,
+fairUnder: ((rL.evUnder + rH.evUnder)/2 + 1) / underOdds
+};
+} else {
+for (var g = 0; g < 7; g++) { if (g > handicap) pOver += totalProb[g]; }
+pOver += totalProb[7];
+pUnder = 1 - pOver;
+}
+
+var evOver = pOver * (overOdds - 1) - pUnder * 1 + pPush * 0;
+var evUnder = pUnder * (underOdds - 1) - pOver * 1 + pPush * 0;
+return {
+evOver: evOver,
+evUnder: evUnder,
+fairOver: (evOver + 1) / overOdds,
+fairUnder: (evUnder + 1) / underOdds
+};
+}
+
+function calcAsianEVForGD(handicap, homeOdds, awayOdds, gdProbs) {
+var gdValues = [-4, -3, -2, -1, 0, 1, 2, 3, 4];
+var pHomeWin = 0, pHomeHalf = 0, pPush = 0, pAwayHalf = 0, pAwayWin = 0;
+
+for (var i = 0; i < gdValues.length; i++) {
+var g = gdValues[i];
+var I = g + handicap;
+var prob = gdProbs[i];
+if (I >= 0.5) {
+pHomeWin += prob;
+} else if (I >= 0.25 && I < 0.5) {
+if (Math.abs(I - 0.25) < 1e-6) pHomeHalf += prob;
+else pHomeWin += prob;
+} else if (Math.abs(I) < 1e-6) {
+pPush += prob;
+} else if (I <= -0.5) {
+pAwayWin += prob;
+} else if (I <= -0.25 && I > -0.5) {
+if (Math.abs(I + 0.25) < 1e-6) pAwayHalf += prob;
+else pAwayWin += prob;
+}
+}
+
+var evHome = pHomeWin * (homeOdds - 1) + pHomeHalf * ((homeOdds - 1) / 2) + pPush * 0 + pAwayHalf * (-0.5) + pAwayWin * (-1);
+var evAway = pAwayWin * (awayOdds - 1) + pAwayHalf * ((awayOdds - 1) / 2) + pPush * 0 + pHomeHalf * (-0.5) + pHomeWin * (-1);
+
+var fairHome = (evHome + 1) / homeOdds;
+var fairAway = (evAway + 1) / awayOdds;
+
+return {
+evHome: evHome,
+evAway: evAway,
+fairHome: fairHome,
+fairAway: fairAway
+};
+}
+
+function parseFileTimestamp(folderName) {
+
+var parts = folderName.split('_');
+if (parts.length !== 2) return null;
+var dateStr = parts[0];
+var timeStr = parts[1];
+
+if (dateStr.length !== 8) return null;
+var year = parseInt(dateStr.substring(0, 4));
+var month = parseInt(dateStr.substring(4, 6)) - 1;
+var day = parseInt(dateStr.substring(6, 8));
+var hour = parseInt(timeStr.substring(0, 2));
+var minute = parseInt(timeStr.substring(2, 4));
+var second = parseInt(timeStr.substring(4, 6));
+
+return new Date(year, month, day, hour, minute, second);
+}
+
+function parseMatchTime(matchTimeStr) {
+if (!matchTimeStr) return null;
+
+var parts = matchTimeStr.trim().split(' ');
+if (parts.length < 2) return null;
+var dateStr = parts[0];
+var timeStr = parts[1];
+
+if (dateStr.length !== 8) return null;
+var year = parseInt(dateStr.substring(0, 4));
+var month = parseInt(dateStr.substring(4, 6)) - 1;
+var day = parseInt(dateStr.substring(6, 8));
+
+var timeParts = timeStr.split(':');
+var hour = parseInt(timeParts[0]);
+var minute = parseInt(timeParts[1]);
+var second = timeParts[2] ? parseInt(timeParts[2]) : 0;
+
+return new Date(year, month, day, hour, minute, second);
+}
+
+function getTimeStatus(folderName, matchTimeStr) {
+var fileTime = parseFileTimestamp(folderName);
+var matchTime = parseMatchTime(matchTimeStr);
+
+if (!fileTime || !matchTime) return null;
+
+if (fileTime < matchTime) {
+return 'before';
+} else {
+return 'after';
+}
+}
+
+var DATA = RAW_DATA;
+var FOLDER_LIST = FOLDERS;
+
+var allLeagues = {};
+var leagueNames = [];
+(function buildLeagueIndex() {
+var leagueSet = {};
+for (var fi = 0; fi < FOLDER_LIST.length; fi++) {
+var fd = DATA[FOLDER_LIST[fi]] || {};
+for (var id in fd) {
+var oc = (fd[id] && fd[id].oc) || {};
+if (!oc.st) continue;
+var ln = oc.st;
+if (!leagueSet[ln]) {
+leagueSet[ln] = true;
+leagueNames.push(ln);
+allLeagues[ln] = {};
+}
+if (!allLeagues[ln][id]) {
+allLeagues[ln][id] = { gt: oc.gt||'', st: oc.st||'', sh: oc.sh||'', sa: oc.sa||'' };
+}
+}
+}
+leagueNames.sort();
+})();
+
+(function populateLeagues() {
+var sel = document.getElementById('leagueSelect');
+for (var li = 0; li < leagueNames.length; li++) {
+var opt = document.createElement('option');
+opt.value = leagueNames[li];
+opt.textContent = leagueNames[li] + ' (' + Object.keys(allLeagues[leagueNames[li]]).length + '场)';
+sel.appendChild(opt);
+}
+})();
+
+var currentIdIndex = {};
+
+function onLeagueChange() {
+var selVal = document.getElementById('leagueSelect').value;
+var inputEl = document.getElementById('searchInput');
+var acEl = document.getElementById('autocomplete');
+inputEl.value = '';
+acEl.style.display = 'none';
+document.getElementById('tableOu').innerHTML = '';
+document.getElementById('tableWin').innerHTML = '';
+document.getElementById('matchInfo').style.display = 'none';
+document.getElementById('noResultOu').style.display = 'none';
+document.getElementById('noResultWin').style.display = 'none';
+document.getElementById('hintOu').style.display = 'block';
+document.getElementById('hintWin').style.display = 'block';
+document.getElementById('legend').style.display = 'none';
+document.getElementById('statusTip').textContent = '';
+
+if (!selVal) {
+currentIdIndex = {};
+inputEl.disabled = true;
+inputEl.placeholder = '先选择联赛，再输入/选择赛事ID或球队名';
+return;
+}
+inputEl.disabled = false;
+inputEl.placeholder = '输入ID或球队名搜索...';
+currentIdIndex = allLeagues[selVal] || {};
+document.getElementById('statusTip').textContent = '当前联赛共 ' + Object.keys(currentIdIndex).length + ' 场比赛';
+}
+
+var searchInput = document.getElementById('searchInput');
+var autocompleteEl = document.getElementById('autocomplete');
+searchInput.addEventListener('input', function() {
+var q = this.value.trim().toLowerCase();
+var leagueSel = document.getElementById('leagueSelect').value;
+if (!leagueSel || !q) { autocompleteEl.style.display='none'; return; }
+var matches = [];
+for (var id in currentIdIndex) {
+var info = currentIdIndex[id];
+var matchText = (id + ' ' + (info.sh||'') + ' ' + (info.sa||'') + ' ' + (info.gt||'')).toLowerCase();
+if (matchText.indexOf(q) !== -1) matches.push(id);
+if (matches.length >= 20) break;
+}
+if (!matches.length) { autocompleteEl.style.display='none'; return; }
+var html = '';
+for (var mi = 0; mi < matches.length; mi++) {
+var idA = matches[mi];
+var info = currentIdIndex[idA];
+var hlInfo = info.sh ? (info.sh+' vs '+info.sa) : '';
+var timeStr = info.gt ? info.gt.substring(4,6)+'/'+info.gt.substring(6,8) : '';
+html += '<div onclick="selectId(\''+idA+'\')">' +
+'<b>' + idA + '</b> <span style="color:#888;font-size:11px">' +
+hlInfo + (timeStr ? ' ['+timeStr+']' : '') + '</span></div>';
+}
+autocompleteEl.innerHTML = html;
+autocompleteEl.style.display = 'block';
+});
+searchInput.addEventListener('keydown', function(e) {
+if (e.key === 'Enter') { autocompleteEl.style.display='none'; doSearch(); }
+if (e.key === 'Escape') { autocompleteEl.style.display='none'; }
+});
+document.addEventListener('click', function(e) {
+if (!e.target.closest('.autocomplete-wrapper')) autocompleteEl.style.display='none';
+});
+function selectId(id) {
+searchInput.value = id;
+autocompleteEl.style.display='none';
+doSearch();
+}
+
+function doClear() {
+searchInput.value = '';
+document.getElementById('tableOu').innerHTML = '';
+document.getElementById('tableWin').innerHTML = '';
+document.getElementById('matchInfo').style.display = 'none';
+document.getElementById('noResultOu').style.display = 'none';
+document.getElementById('noResultWin').style.display = 'none';
+document.getElementById('hintOu').style.display = 'block';
+document.getElementById('hintWin').style.display = 'block';
+document.getElementById('legend').style.display = 'none';
+document.getElementById('statusTip').textContent = '';
+document.getElementById('btnOuReport').style.display = 'none';
+var leagueSel = document.getElementById('leagueSelect');
+if (leagueSel) {
+leagueSel.value = '';
+onLeagueChange();
+}
+}
+
+function switchView(view) {
+var btnOu = document.getElementById('btnOu');
+var btnWin = document.getElementById('btnWin');
+var viewOu = document.getElementById('viewOu');
+var viewWin = document.getElementById('viewWin');
+
+if (view === 'ou') {
+btnOu.classList.add('active');
+btnWin.classList.remove('active');
+viewOu.classList.add('active');
+viewWin.classList.remove('active');
+} else {
+btnWin.classList.add('active');
+btnOu.classList.remove('active');
+viewWin.classList.add('active');
+viewOu.classList.remove('active');
+}
+}
+
+function doSearch() {
+var id = searchInput.value.trim();
+if (!id) return;
+
+var leagueSel = document.getElementById('leagueSelect').value;
+if (leagueSel && !currentIdIndex[id]) {
+document.getElementById('noResultOu').style.display = 'block';
+document.getElementById('noResultWin').style.display = 'block';
+document.getElementById('hintOu').style.display = 'none';
+document.getElementById('hintWin').style.display = 'none';
+document.getElementById('matchInfo').style.display = 'none';
+document.getElementById('legend').style.display = 'none';
+document.getElementById('statusTip').textContent = '该ID不属于所选联赛，请重新选择联赛或ID';
+return;
+}
+
+document.getElementById('hintOu').style.display = 'none';
+document.getElementById('hintWin').style.display = 'none';
+document.getElementById('noResultOu').style.display = 'none';
+document.getElementById('noResultWin').style.display = 'none';
+document.getElementById('tableOu').innerHTML = '';
+document.getElementById('tableWin').innerHTML = '';
+document.getElementById('matchInfo').style.display = 'none';
+document.getElementById('legend').style.display = 'flex';
+
+currentMatchId = id;
+currentRows = [];
+for (var ri = 0; ri < FOLDER_LIST.length; ri++) {
+var folder = FOLDER_LIST[ri];
+var fd = DATA[folder] || {};
+currentRows.push({ folder: folder, rec: (fd && fd[id]) ? fd[id] : null });
+}
+
+var hasAny = currentRows.some(function(r){ return r.rec !== null; });
+if (!hasAny) {
+document.getElementById('noResultOu').style.display = 'block';
+document.getElementById('noResultWin').style.display = 'block';
+document.getElementById('statusTip').textContent = '';
+return;
+}
+
+for (var ri3 = 0; ri3 < currentRows.length; ri3++) {
+var rInfo = currentRows[ri3];
+if (rInfo.rec && rInfo.rec.oc && rInfo.rec.oc.gt) {
+var ocv = rInfo.rec.oc;
+document.getElementById('matchTitle').textContent = (ocv.sh||'') + ' vs ' + (ocv.sa||'');
+document.getElementById('matchMeta').textContent = '联赛：' + (ocv.st||'-') + ' | 赛事时间：' + (ocv.gt||'-');
+document.getElementById('matchInfo').style.display = 'block';
+break;
+}
+}
+
+var count = currentRows.filter(function(r){ return r.rec !== null; }).length;
+document.getElementById('statusTip').textContent = '共找到 ' + count + ' 个时间段的数据';
+
+buildOuTable(currentRows);
+buildWinTable(currentRows);
+
+document.getElementById('btnOuReport').style.display = count > 0 ? 'inline-block' : 'none';
+}
+
+function buildOuTable(rows) {
+var container = document.getElementById('tableOu');
+container.innerHTML = '';
+var table = document.createElement('table');
+var ngCols = ['h1','h2','h3','h4','h5','h6','a1','a2','a3','a4','a5','a6'];
+var tgLabels = ['TG0','TG1','TG2','TG3','TG4','TG5','TG6','TG7+'];
+var theadHTML =
+'<thead>' +
+'  <tr><th rowspan="2">时间戳</th><th colspan="12" class="group-ng">进球分布赔率</th><th colspan="8" class="group-tg">总进球概率</th><th rowspan="2" class="group-lam">λ/SSE</th><th colspan="9" class="group-ou-base">大小球赔率 + 公平概率 + EV</th></tr>' +
+'  <tr class="subheader-row">' +
+'    <th class="group-ng">H1</th><th class="group-ng">H2</th><th class="group-ng">H3</th><th class="group-ng">H4</th><th class="group-ng">H5</th><th class="group-ng">H6</th>' +
+'    <th class="group-ng">A1</th><th class="group-ng">A2</th><th class="group-ng">A3</th><th class="group-ng">A4</th><th class="group-ng">A5</th><th class="group-ng">A6</th>';
+for (var ti=0; ti<tgLabels.length; ti++) theadHTML += '<th class="group-tg">'+tgLabels[ti]+'</th>';
+theadHTML +=
+'    <th class="group-ou-base">大球OO</th><th class="group-ou-base">小球UO</th><th class="group-ou-base ou-divider">盘口LI</th>' +
+'    <th class="group-ou-hv1">HV1大</th><th class="group-ou-hv1">HV1小</th><th class="group-ou-hv1 ou-divider">HV1盘</th>' +
+'    <th class="group-ou-hv2">HV2大</th><th class="group-ou-hv2">HV2小</th><th class="group-ou-hv2">HV2盘</th>' +
+'  <tr></thead>';
+table.innerHTML = theadHTML + '<tbody></tbody>';
+container.appendChild(table);
+var tbody = table.querySelector('tbody');
+
+var prevNg = null, prevTg = null, prevOuLines = null;
+
+for (var ri=0; ri<rows.length; ri++) {
+var folder = rows[ri].folder, rec = rows[ri].rec;
+var tr = document.createElement('tr');
+if (!rec) {
+tr.innerHTML = '<td class="folder-cell">'+folder+'</td><td colspan="30" class="missing">— 该时间段无此赛事 —</td>';
+tbody.appendChild(tr);
+continue;
+}
+
+var matchGt = rec.oc && rec.oc.gt ? rec.oc.gt : null;
+var timeStatus = getTimeStatus(folder, matchGt);
+var timeClass = '';
+if (timeStatus === 'before') {
+timeClass = 'time-before';
+} else if (timeStatus === 'after') {
+timeClass = 'time-after';
+}
+
+var ng = rec.ng || {}, ou = rec.ou || {};
+var curNg = ngCols.map(function(k){ return ng[k]||''; });
+
+var htmlOut = '<td class="folder-cell ' + timeClass + '">'+folder+'</td>';
+
+for (var ni=0; ni<ngCols.length; ni++) {
+var nval = ng[ngCols[ni]] || '<span class="missing">-</span>';
+var nchg = (prevNg && ng[ngCols[ni]] && prevNg[ni] !== ng[ngCols[ni]]) ? ' changed' : '';
+htmlOut += '<td class="ng-val'+nchg+'">'+nval+'</td>';
+}
+
+var hasNgData = ngCols.every(function(k){ return ng[k] && parseFloat(ng[k])>0; });
+var tgProbs = null;
+if (hasNgData) {
+var homeOdds = [ng.h1,ng.h2,ng.h3,ng.h4,ng.h5,ng.h6];
+var awayOdds = [ng.a1,ng.a2,ng.a3,ng.a4,ng.a5,ng.a6];
+var hp = normalizeOdds(homeOdds);
+var ap = normalizeOdds(awayOdds);
+tgProbs = calcTotalGoals(hp, ap);
+}
+var curTg = tgProbs ? tgProbs.slice() : new Array(8).fill('');
+
+// === 泊松模型计算：使用 OU 赔率优化 λ ===
+var poissonLam = null;
+var poissonTgProbs = null;
+var poissonDevs = {};
+try {
+  var ouLines = buildPoissonLines(ou);
+  if (Object.keys(ouLines).length > 0) {
+    var poissonResult = optimizePoisson(ouLines);
+    poissonLam = poissonResult.lam;
+    poissonTgProbs = computePoissonTg(poissonLam);
+    poissonDevs = computeDeviations(poissonLam, ouLines);
+  }
+} catch(e) {}
+// ======================================
+
+for (var tgi=0; tgi<8; tgi++) {
+var tval = tgProbs ? (tgProbs[tgi]*100).toFixed(1)+'%' : '<span class="missing">-</span>';
+var tchg = (prevTg && tgProbs && prevTg[tgi]!=='' && Math.abs(prevTg[tgi]-tgProbs[tgi])>0.005) ? ' changed' : '';
+var poissonVal = poissonTgProbs ? (poissonTgProbs[tgi]*100).toFixed(1)+'%' : '';
+// 上下行对比着色：上一行 >= 下一行 → 红色，否则黑色
+var topVal = tgProbs ? tgProbs[tgi] : -1;
+var botVal = poissonTgProbs ? poissonTgProbs[tgi] : -1;
+var topColor = '#000';
+if (topVal >= 0 && botVal >= 0) {
+  topColor = topVal >= botVal ? '#dc2626' : '#111';
+}
+htmlOut += '<td class="tg-val'+tchg+'" style="line-height:1.7;vertical-align:middle"><span style="font-weight:700;color:'+topColor+'">'+tval+'</span><br><span style="font-size:11px;color:#888">'+poissonVal+'</span></td>';
+}
+
+// === λ/SSE 列 ===
+var lamCell = '<span class="missing">-</span>';
+if (poissonLam !== null) {
+  lamCell = '<span style="font-weight:700;font-size:13px">'+poissonLam.toFixed(3)+'</span><br><span style="font-size:11px;color:#555">'+formatSSE(poissonResult.sse)+'</span>';
+}
+htmlOut += '<td class="ou-val" style="line-height:1.7">'+lamCell+'</td>';
+// =================
+
+var hivStr = ou.hi_var || '';
+var hivGroups = [];
+if (hivStr) {
+var lines = hivStr.split('#');
+var grpMap = {}, grpOrder = [];
+for (var hi=0; hi<lines.length; hi++) {
+var parts = lines[hi].trim().split(',');
+if (parts.length<5) continue;
+var hv = parseFloat(parts[1])/4;
+var key = hv.toFixed(2);
+if (!grpMap[key]) { grpMap[key]={over:'',under:''}; grpOrder.push(key); }
+var dir = parts[4].trim().toUpperCase();
+var odds = (parseFloat(parts[0])/1000).toFixed(2);
+if (dir==='H') grpMap[key].over = odds;
+else if (dir==='L') grpMap[key].under = odds;
+}
+for (var gidx=0; gidx<grpOrder.length; gidx++) {
+var hk = grpOrder[gidx];
+hivGroups.push({over: grpMap[hk].over, under: grpMap[hk].under, hcap: hk});
+}
+}
+var allLines = [
+{ over: ou.oo||'', under: ou.uo||'', hcap: ou.li ? (parseFloat(ou.li)/4).toFixed(2) : '' },
+hivGroups[0] || {over:'',under:'',hcap:''},
+hivGroups[1] || {over:'',under:'',hcap:''}
+];
+var prevLines = prevOuLines || null;
+for (var lix=0; lix<3; lix++) {
+var line = allLines[lix];
+var pLine = prevLines ? prevLines[lix] : null;
+var ovStr=line.over, unStr=line.under, hcStr=line.hcap;
+var ovNum=parseFloat(ovStr)||0, unNum=parseFloat(unStr)||0, hcNum=parseFloat(hcStr)||0;
+var chO = (pLine && ovStr && pLine.over!==ovStr)?' changed':'';
+var chU = (pLine && unStr && pLine.under!==unStr)?' changed':'';
+var chH = (pLine && hcStr && pLine.hcap!==hcStr)?' changed':'';
+var divClass = (lix===0)?' ou-divider':'';
+if (!ovStr && !unStr && !hcStr) {
+htmlOut += '<td class="ou-val"><span class="missing">-</span></td><td class="ou-val"><span class="missing">-</span></td><td class="ou-val'+divClass+'"><span class="missing">-</span></td>';
+} else {
+var cellO = ovStr, cellU = unStr;
+if (tgProbs && ovNum>0 && unNum>0 && !isNaN(hcNum)) {
+try {
+var res = calcAsianEV(hcNum, ovNum, unNum, tgProbs);
+if (res.fairOver>0) cellO += '<span class="fp-line">公平P:'+(res.fairOver*100).toFixed(1)+'%</span>';
+if (!isNaN(res.evOver)) cellO += '<span class="ev-line '+(res.evOver>0?'ev-pos':'ev-neg')+'">EV '+(res.evOver>=0?'+':'')+res.evOver.toFixed(2)+'</span>';
+// 偏差值
+if (poissonLam !== null && poissonDevs[hcStr] && poissonDevs[hcStr].over !== undefined) {
+  var dev = poissonDevs[hcStr].over;
+  var devClass = dev >= 0 ? 'dev-pos' : 'dev-neg';
+  cellO += '<span class="dev-line '+devClass+'">'+(dev>=0?'+':'')+dev.toFixed(2)+'%</span>';
+}
+if (res.fairUnder>0) cellU += '<span class="fp-line">公平P:'+(res.fairUnder*100).toFixed(1)+'%</span>';
+if (!isNaN(res.evUnder)) cellU += '<span class="ev-line '+(res.evUnder>0?'ev-pos':'ev-neg')+'">EV '+(res.evUnder>=0?'+':'')+res.evUnder.toFixed(2)+'</span>';
+// 偏差值
+if (poissonLam !== null && poissonDevs[hcStr] && poissonDevs[hcStr].under !== undefined) {
+  var dev = poissonDevs[hcStr].under;
+  var devClass = dev >= 0 ? 'dev-pos' : 'dev-neg';
+  cellU += '<span class="dev-line '+devClass+'">'+(dev>=0?'+':'')+dev.toFixed(2)+'%</span>';
+}
+} catch(e) {}
+}
+htmlOut += '<td class="ou-val'+chO+'">'+cellO+'</td><td class="ou-val'+chU+'">'+cellU+'</td><td class="ou-val'+chH+divClass+'">'+hcStr+'</td>';
+}
+}
+tr.innerHTML = htmlOut;
+tbody.appendChild(tr);
+prevNg = curNg;
+prevTg = curTg;
+prevOuLines = allLines.slice();
+}
+}
+
+function buildWinTable(rows) {
+var container = document.getElementById('tableWin');
+container.innerHTML = '';
+var table = document.createElement('table');
+var ngCols = ['h1','h2','h3','h4','h5','h6','a1','a2','a3','a4','a5','a6'];
+var displayLabels = ['+4+', '+3', '+2', '+1', '0', '-1', '-2', '-3', '-4-'];
+var theadHTML =
+'<thead>' +
+'  <tr><th rowspan="2">时间戳</th><th colspan="12" class="group-ng">进球分布赔率</th><th colspan="9" class="group-tg">净胜球概率</th><th rowspan="2" class="group-lam">λ₁/λ₂<br>SSE</th><th colspan="9" class="group-win-base">让球赔率 + 公平概率 + EV</th></tr>' +
+'  <tr class="subheader-row">' +
+'    <th class="group-ng">H1</th><th class="group-ng">H2</th><th class="group-ng">H3</th><th class="group-ng">H4</th><th class="group-ng">H5</th><th class="group-ng">H6</th>' +
+'    <th class="group-ng">A1</th><th class="group-ng">A2</th><th class="group-ng">A3</th><th class="group-ng">A4</th><th class="group-ng">A5</th><th class="group-ng">A6</th>';
+for (var ti=0; ti<displayLabels.length; ti++) theadHTML += '<th class="group-tg">'+displayLabels[ti]+'</th>';
+theadHTML +=
+'    <th class="group-win-base">主队</th><th class="group-win-base">客队</th><th class="group-win-base ou-divider">盘口</th>' +
+'    <th class="group-win-hv1">HV1主</th><th class="group-win-hv1">HV1客</th><th class="group-win-hv1 ou-divider">HV1盘</th>' +
+'    <th class="group-win-hv2">HV2主</th><th class="group-win-hv2">HV2客</th><th class="group-win-hv2">HV2盘</th>' +
+'  </tr></thead>';
+table.innerHTML = theadHTML + '<tbody></tbody>';
+container.appendChild(table);
+var tbody = table.querySelector('tbody');
+
+var prevNg = null, prevGd = null, prevWinLines = null;
+
+for (var ri=0; ri<rows.length; ri++) {
+var folder = rows[ri].folder, rec = rows[ri].rec;
+var tr = document.createElement('tr');
+if (!rec) {
+tr.innerHTML = '<td class="folder-cell">'+folder+'</td><td colspan="31" class="missing">— 该时间段无此赛事 —</td>';
+tbody.appendChild(tr);
+continue;
+}
+
+var matchGt = rec.oc && rec.oc.gt ? rec.oc.gt : null;
+var timeStatus = getTimeStatus(folder, matchGt);
+var timeClass = '';
+if (timeStatus === 'before') {
+timeClass = 'time-before';
+} else if (timeStatus === 'after') {
+timeClass = 'time-after';
+}
+
+var ng = rec.ng || {}, win = rec.win || {};
+var curNg = ngCols.map(function(k){ return ng[k]||''; });
+
+var htmlOut = '<td class="folder-cell ' + timeClass + '">'+folder+'</td>';
+
+for (var ni=0; ni<ngCols.length; ni++) {
+var nval = ng[ngCols[ni]] || '<span class="missing">-</span>';
+var nchg = (prevNg && ng[ngCols[ni]] && prevNg[ni] !== ng[ngCols[ni]]) ? ' changed' : '';
+htmlOut += '<td class="ng-val'+nchg+'">'+nval+'</td>';
+}
+
+var hasNgData = ngCols.every(function(k){ return ng[k] && parseFloat(ng[k])>0; });
+var gdProbs = null;
+if (hasNgData) {
+var homeOdds = [ng.h1,ng.h2,ng.h3,ng.h4,ng.h5,ng.h6];
+var awayOdds = [ng.a1,ng.a2,ng.a3,ng.a4,ng.a5,ng.a6];
+var hp = normalizeOdds(homeOdds);
+var ap = normalizeOdds(awayOdds);
+gdProbs = calcGoalDiff(hp, ap);
+}
+var curGd = gdProbs ? gdProbs.slice() : new Array(9).fill('');
+
+// === 双变量泊松模型计算：使用 win 赔率优化 λ₁, λ₂ ===
+var winLamH = null;
+var winLamA = null;
+var winSse = null;
+var winPoissonGd = null;
+var winDevs = {};
+var winPoissonLines = {};
+try {
+  winPoissonLines = buildWinPoissonLines(win);
+  if (Object.keys(winPoissonLines).length > 0) {
+    var winResult = winOptimize(winPoissonLines);
+    winLamH = winResult.lamH;
+    winLamA = winResult.lamA;
+    winSse = winResult.sse;
+    winPoissonGd = computeWinGoalDiffBins(winLamH, winLamA);
+    winDevs = computeWinDeviations(winLamH, winLamA, winPoissonLines);
+  }
+} catch(e) {}
+// ==============================================
+
+for (var gi=0; gi<9; gi++) {
+var origIdx = 8 - gi;
+var gval = gdProbs ? (gdProbs[origIdx]*100).toFixed(1)+'%' : '<span class="missing">-</span>';
+var gchg = (prevGd && gdProbs && prevGd[origIdx]!=='' && Math.abs(prevGd[origIdx]-gdProbs[origIdx])>0.005) ? ' changed' : '';
+// 泊松净胜球分布第二行
+var winGdVal = winPoissonGd ? (winPoissonGd[origIdx]*100).toFixed(1)+'%' : '';
+// 上下行对比着色
+var wTop = gdProbs ? gdProbs[origIdx] : -1;
+var wBot = winPoissonGd ? winPoissonGd[origIdx] : -1;
+var wColor = '#000';
+if (wTop >= 0 && wBot >= 0) {
+  wColor = wTop >= wBot ? '#dc2626' : '#111';
+}
+htmlOut += '<td class="tg-val'+gchg+'" style="line-height:1.7;vertical-align:middle"><span style="font-weight:700;color:'+wColor+'">'+gval+'</span><br><span style="font-size:11px;color:#888">'+winGdVal+'</span></td>';
+}
+
+// === λ/SSE 列（让球） ===
+var winLamCell = '<span class="missing">-</span>';
+if (winLamH !== null) {
+  winLamCell = '<span style="font-weight:700;font-size:13px">'+winLamH.toFixed(3)+'/'+winLamA.toFixed(3)+'</span><br><span style="font-size:11px;color:#555">'+formatSSE(winSse)+'</span>';
+}
+htmlOut += '<td class="win-val" style="line-height:1.7">'+winLamCell+'</td>';
+// ============================
+
+var baseHandicap = null, baseHomeOdds = null, baseAwayOdds = null;
+if (win.g && win.gg && win.ho && win.ao) {
+var gDir = win.g;
+var ggVal = parseFloat(win.gg);
+var hcapRaw = (ggVal - 1) / 4;
+var handicap = (gDir === 'H') ? -hcapRaw : hcapRaw;
+baseHandicap = handicap.toFixed(2);
+baseHomeOdds = win.ho;
+baseAwayOdds = win.ao;
+}
+function parseVarGroup(str) {
+if (!str) return [];
+var parts = str.split(',');
+var groups = [];
+for (var i=0; i+4<parts.length; i+=5) {
+var dir = parts[i];
+var ggVal = parseFloat(parts[i+1]);
+var homeOdds = parts[i+2];
+var awayOdds = parts[i+3];
+var hcapRaw = (ggVal - 1) / 4;
+var handicap = (dir === 'H') ? -hcapRaw : hcapRaw;
+groups.push({ over: homeOdds, under: awayOdds, hcap: handicap.toFixed(2) });
+}
+return groups;
+}
+var varGroups = parseVarGroup(win.var || '');
+var allLines = [
+{ over: baseHomeOdds||'', under: baseAwayOdds||'', hcap: baseHandicap||'' },
+varGroups[0] || {over:'',under:'',hcap:''},
+varGroups[1] || {over:'',under:'',hcap:''}
+];
+var prevLines = prevWinLines || null;
+for (var lix=0; lix<3; lix++) {
+var line = allLines[lix];
+var pLine = prevLines ? prevLines[lix] : null;
+var ovStr = line.over, unStr = line.under, hcStr = line.hcap;
+var ovNum = parseFloat(ovStr)||0, unNum = parseFloat(unStr)||0, hcNum = parseFloat(hcStr)||0;
+var chO = (pLine && ovStr && pLine.over!==ovStr)?' changed':'';
+var chU = (pLine && unStr && pLine.under!==unStr)?' changed':'';
+var chH = (pLine && hcStr && pLine.hcap!==hcStr)?' changed':'';
+var divClass = (lix===0)?' ou-divider':'';
+if (!ovStr && !unStr && !hcStr) {
+htmlOut += '<td class="win-val"><span class="missing">-</span></td><td class="win-val"><span class="missing">-</span></td><td class="win-val'+divClass+'"><span class="missing">-</span></td>';
+} else {
+var cellO = ovStr, cellU = unStr;
+if (gdProbs && ovNum>0 && unNum>0 && !isNaN(hcNum)) {
+try {
+var res = calcAsianEVForGD(hcNum, ovNum, unNum, gdProbs);
+if (res.fairHome>0) cellO += '<span class="fp-line">公平P:'+(res.fairHome*100).toFixed(1)+'%</span>';
+if (!isNaN(res.evHome)) cellO += '<span class="ev-line '+(res.evHome>0?'ev-pos':'ev-neg')+'">EV '+(res.evHome>=0?'+':'')+res.evHome.toFixed(2)+'</span>';
+// 偏差值
+if (winLamH !== null && winDevs[hcStr] && winDevs[hcStr].home !== undefined) {
+  var dev = winDevs[hcStr].home;
+  var devClass = dev >= 0 ? 'dev-pos' : 'dev-neg';
+  cellO += '<span class="dev-line '+devClass+'">'+(dev>=0?'+':'')+dev.toFixed(2)+'%</span>';
+}
+if (res.fairAway>0) cellU += '<span class="fp-line">公平P:'+(res.fairAway*100).toFixed(1)+'%</span>';
+if (!isNaN(res.evAway)) cellU += '<span class="ev-line '+(res.evAway>0?'ev-pos':'ev-neg')+'">EV '+(res.evAway>=0?'+':'')+res.evAway.toFixed(2)+'</span>';
+// 偏差值
+if (winLamH !== null && winDevs[hcStr] && winDevs[hcStr].away !== undefined) {
+  var dev = winDevs[hcStr].away;
+  var devClass = dev >= 0 ? 'dev-pos' : 'dev-neg';
+  cellU += '<span class="dev-line '+devClass+'">'+(dev>=0?'+':'')+dev.toFixed(2)+'%</span>';
+}
+} catch(e) {}
+}
+htmlOut += '<td class="win-val'+chO+'">'+cellO+'</td><td class="win-val'+chU+'">'+cellU+'</td><td class="win-val'+chH+divClass+'">'+hcStr+'</td>';
+}
+}
+tr.innerHTML = htmlOut;
+tbody.appendChild(tr);
+prevNg = curNg;
+prevGd = curGd;
+prevWinLines = allLines.slice();
+}
+}
+
+window.addEventListener('message', function(e) {
+if (!e.data || e.data.type !== 'FAIRPLAY_FILL') return;
+var league   = e.data.league  || '';
+var matchId  = e.data.matchId || '';
+
+var leagueSel = document.getElementById('leagueSelect');
+if (leagueSel && league) {
+var found = false;
+for (var i = 0; i < leagueSel.options.length; i++) {
+if (leagueSel.options[i].value === league) {
+leagueSel.selectedIndex = i;
+found = true;
+break;
+}
+}
+if (found && typeof onLeagueChange === 'function') onLeagueChange();
+}
+
+setTimeout(function() {
+var searchEl = document.getElementById('searchInput');
+if (searchEl && matchId) {
+searchEl.disabled = false;
+searchEl.value = matchId;
+}
+
+if (typeof doSearch === 'function') doSearch();
+}, 200);
+});
+
+function generateOuReport() {
+if (!currentRows || currentRows.length === 0) {
+alert('暂无数据，请先查询一个比赛ID');
+return;
+}
+
+var results = [];
+
+for (var ri = 0; ri < currentRows.length; ri++) {
+var folder = currentRows[ri].folder;
+var rec = currentRows[ri].rec;
+if (!rec) continue;
+
+var matchGt = rec.oc && rec.oc.gt ? rec.oc.gt : null;
+var isAfterKickoff = (getTimeStatus(folder, matchGt) === 'after');
+
+var ou = rec.ou || {};
+var ng = rec.ng || {};
+
+var ooVal = parseFloat(ou.oo);
+var uoVal = parseFloat(ou.uo);
+var liVal = parseFloat(ou.li);
+if (isNaN(ooVal) || isNaN(uoVal) || isNaN(liVal) || ooVal <= 0 || uoVal <= 0) continue;
+
+var handicap = liVal / 4;
+var displayHandicap = handicap.toFixed(2);
+
+var ngCols = ['h1','h2','h3','h4','h5','h6','a1','a2','a3','a4','a5','a6'];
+var hasNg = ngCols.every(function(k){ return ng[k] && parseFloat(ng[k]) > 0; });
+if (!hasNg) continue;
+
+var homeOdds = [ng.h1, ng.h2, ng.h3, ng.h4, ng.h5, ng.h6];
+var awayOdds = [ng.a1, ng.a2, ng.a3, ng.a4, ng.a5, ng.a6];
+var hp = normalizeOdds(homeOdds);
+var ap = normalizeOdds(awayOdds);
+var tgProbs = calcTotalGoals(hp, ap);
+if (!tgProbs) continue;
+
+var res;
+try {
+res = calcAsianEV(handicap, ooVal, uoVal, tgProbs);
+if (!res || isNaN(res.fairOver) || isNaN(res.fairUnder)) continue;
+} catch(e) { continue; }
+
+var overFairP = res.fairOver;
+var underFairP = res.fairUnder;
+var overEV = res.evOver;
+var underEV = res.evUnder;
+
+var pickOver = overFairP >= underFairP;
+var pickEV   = pickOver ? overEV : underEV;
+
+var warning = '';
+if (pickEV >= 0) {
+warning = 'reversed';
+} else if (pickEV > -0.020) {
+warning = 'deviated';
+}
+
+var conclusion  = pickOver ? '大球' : '小球';
+var concClass   = pickOver ? 'over'  : 'under';
+var threshold   = pickOver ? ('>=' + displayHandicap) : ('<=' + displayHandicap);
+var bestFairP   = pickOver ? overFairP : underFairP;
+
+results.push({
+folder:    folder,
+handicap:  displayHandicap,
+fairP:     (bestFairP * 100).toFixed(1),
+ev:        pickEV,
+conclusion: conclusion,
+concClass:  concClass,
+threshold:  threshold,
+warning:    warning
+});
+
+if (isAfterKickoff) break;
+}
+
+if (results.length === 0) {
+alert('没有可分析的有效盘口数据（第一个盘口）');
+return;
+}
+
+sendOuReportToFootball(results);
+}
+
+function sendOuReportToFootball(results) {
+try {
+var payload = {
+type: 'OU_REPORT',
+matchId: currentMatchId,
+results: results.map(function(r) {
+return {
+folder:     r.folder,
+handicap:   r.handicap,
+fairP:      r.fairP,
+ev:         r.ev,
+conclusion: r.conclusion,
+concClass:  r.concClass,
+threshold:  r.threshold,
+warning:    r.warning
+};
+})
+};
+
+if (window.opener && !window.opener.closed) {
+window.opener.postMessage(payload, '*');
+} else {
+
+window.postMessage(payload, '*');
+}
+} catch(e) {}
+}
+
+// ===== 泊松分布计算函数 (来自 poisson_calculator.html) =====
+function poissonPmf(lam, k) {
+  if (lam <= 0) return k === 0 ? 1 : 0;
+  var lp = -lam + k * Math.log(lam);
+  for (var i = 2; i <= k; i++) lp -= Math.log(i);
+  return Math.exp(lp);
+}
+function poissonCdf(lam, k) { var s = 0; for (var i = 0; i <= k; i++) s += poissonPmf(lam, i); return s; }
+function pAtLeast(lam, k) { return 1 - poissonCdf(lam, k - 1); }
+function pAtMost(lam, k) { return poissonCdf(lam, k); }
+
+function detectType(line) {
+  var d = Math.round((Math.abs(line) % 1) * 100) / 100;
+  if (d === 0.5) return 'half';
+  if (d === 0.0) return 'integer';
+  if (d === 0.25 || d === 0.75) return 'quarter';
+  return null;
+}
+
+function halfProbs(lam, line) {
+  return [pAtLeast(lam, Math.round(line + 0.5)), pAtMost(lam, Math.round(line - 0.5))];
+}
+function intProbs(lam, line) {
+  return [pAtLeast(lam, Math.round(line + 1)), pAtMost(lam, Math.round(line - 1))];
+}
+function qtrProbs(lam, line) {
+  var lo = line - 0.25, hi = line + 0.25;
+  var lt = detectType(lo), ht = detectType(hi);
+  var pLo = lt === 'half' ? halfProbs(lam, lo) : intProbs(lam, lo);
+  var pHi = ht === 'half' ? halfProbs(lam, hi) : intProbs(lam, hi);
+  return [0.5 * pLo[0] + 0.5 * pHi[0], 0.5 * pLo[1] + 0.5 * pHi[1]];
+}
+function lineProbsRaw(lam, line) {
+  var t = detectType(line);
+  if (t === 'half') return halfProbs(lam, line);
+  if (t === 'integer') return intProbs(lam, line);
+  return qtrProbs(lam, line);
+}
+function lineProbsNorm(lam, line) {
+  var r = lineProbsRaw(lam, line);
+  var total = r[0] + r[1];
+  return [r[0] / total, r[1] / total];
+}
+function fairProb(ov, un) {
+  var m = 1/ov + 1/un;
+  return [(1/ov)/m, (1/un)/m];
+}
+function poissonObjective(lam, lines) {
+  var total = 0;
+  for (var lv in lines) {
+    var od = lines[lv];
+    var fp = fairProb(od.over, od.under);
+    var mp = lineProbsNorm(lam, parseFloat(lv));
+    total += (mp[0] - fp[0])*(mp[0] - fp[0]) + (mp[1] - fp[1])*(mp[1] - fp[1]);
+  }
+  return total;
+}
+function optimizePoisson(lines) {
+  var best = 2.5, bestV = Infinity;
+  for (var lam = 0.3; lam <= 8.0; lam += 0.01) {
+    var v = poissonObjective(lam, lines);
+    if (v < bestV) { bestV = v; best = lam; }
+  }
+  var a = Math.max(0.1, best - 0.5), b = best + 0.5;
+  var phi = (Math.sqrt(5) - 1) / 2;
+  var c = b - phi * (b - a), d = a + phi * (b - a);
+  var fc = poissonObjective(c, lines), fd = poissonObjective(d, lines);
+  for (var i = 0; i < 50; i++) {
+    if (Math.abs(b - a) < 1e-10) break;
+    if (fc < fd) { b = d; d = c; fd = fc; c = b - phi * (b - a); fc = poissonObjective(c, lines); }
+    else { a = c; c = d; fc = fd; d = a + phi * (b - a); fd = poissonObjective(d, lines); }
+  }
+  var lam = (a + b) / 2;
+  return { lam: lam, sse: poissonObjective(lam, lines) };
+}
+
+// 根据 OU 数据构建泊松 lines 对象
+function buildPoissonLines(ou) {
+  var lines = {};
+  // 基础盘口
+  if (ou.oo && ou.uo && ou.li) {
+    var hc = parseFloat(ou.li) / 4;
+    var ov = parseFloat(ou.oo);
+    var un = parseFloat(ou.uo);
+    if (!isNaN(hc) && !isNaN(ov) && !isNaN(un) && ov >= 1.01 && un >= 1.01) {
+      lines[hc.toFixed(2)] = {over: ov, under: un};
+    }
+  }
+  // HV 盘口
+  var hivStr = ou.hi_var || '';
+  if (hivStr) {
+    var segs = hivStr.split('#');
+    var grpMap = {}, grpOrder = [];
+    for (var hi = 0; hi < segs.length; hi++) {
+      var parts = segs[hi].trim().split(',');
+      if (parts.length < 5) continue;
+      var hv = parseFloat(parts[1]) / 4;
+      var key = hv.toFixed(2);
+      if (!grpMap[key]) { grpMap[key] = {over: '', under: ''}; grpOrder.push(key); }
+      var dir = parts[4].trim().toUpperCase();
+      var odds = parseFloat(parts[0]) / 1000;
+      if (dir === 'H') grpMap[key].over = odds;
+      else if (dir === 'L') grpMap[key].under = odds;
+    }
+    for (var gi = 0; gi < grpOrder.length; gi++) {
+      var hk = grpOrder[gi];
+      var entry = grpMap[hk];
+      if (entry.over && entry.under && parseFloat(entry.over) >= 1.01 && parseFloat(entry.under) >= 1.01) {
+        lines[hk] = {over: parseFloat(entry.over), under: parseFloat(entry.under)};
+      }
+    }
+  }
+  return lines;
+}
+
+function computePoissonTg(lam) {
+  var tg = [];
+  var sumP = 0;
+  for (var k = 0; k <= 6; k++) {
+    var pk = poissonPmf(lam, k);
+    tg.push(pk);
+    sumP += pk;
+  }
+  tg.push(Math.max(0, 1 - sumP));
+  return tg;
+}
+
+// 计算每条盘口的偏差
+function computeDeviations(lam, lines) {
+  var devs = {};
+  for (var lv in lines) {
+    var od = lines[lv];
+    var fp = fairProb(od.over, od.under);
+    var mp = lineProbsNorm(lam, parseFloat(lv));
+    devs[lv] = {
+      over: (mp[0] - fp[0]) * 100,
+      under: (mp[1] - fp[1]) * 100
+    };
+  }
+  return devs;
+}
+
+function formatSSE(sse) {
+  if (sse === 0) return '0';
+  var exp = Math.floor(Math.log10(Math.abs(sse)));
+  var mantissa = sse / Math.pow(10, exp);
+  return mantissa.toFixed(2) + '*E' + exp;
+}
+
+// ===== 双变量泊松（让球盘口） =====
+var WIN_MAX_G = 25;
+
+function goalDiff(lamH, lamA) {
+  var ph = [], pa = [];
+  for (var i = 0; i <= WIN_MAX_G; i++) { ph.push(poissonPmf(lamH, i)); pa.push(poissonPmf(lamA, i)); }
+  var probs = {};
+  for (var d = -WIN_MAX_G; d <= WIN_MAX_G; d++) {
+    var p = 0;
+    if (d >= 0) {
+      for (var i = 0; i <= WIN_MAX_G - d; i++) p += ph[i + d] * pa[i];
+    } else {
+      var da = -d;
+      for (var i = 0; i <= WIN_MAX_G - da; i++) p += ph[i] * pa[i + da];
+    }
+    if (p > 1e-12) probs[d] = p;
+  }
+  return probs;
+}
+
+function diffSum(probs, lo, hi) {
+  var s = 0;
+  for (var d = lo; d <= hi; d++) s += probs[d] || 0;
+  return s;
+}
+
+function winHalfProbs(diff, line) {
+  var th = Math.round(-line + 0.5);
+  var ta = Math.round(-line - 0.5);
+  var home = 0, away = 0;
+  for (var d = th; d <= WIN_MAX_G; d++) home += diff[d] || 0;
+  for (var d = -WIN_MAX_G; d <= ta; d++) away += diff[d] || 0;
+  return [home, away];
+}
+
+function winIntProbs(diff, line) {
+  var push = Math.round(-line);
+  var th = push + 1, ta = push - 1;
+  var home = 0, away = 0;
+  for (var d = th; d <= WIN_MAX_G; d++) home += diff[d] || 0;
+  for (var d = -WIN_MAX_G; d <= ta; d++) away += diff[d] || 0;
+  return [home, away];
+}
+
+function winQtrProbs(diff, line) {
+  var lo = line - 0.25, hi = line + 0.25;
+  var lt = detectType(lo), ht = detectType(hi);
+  var pLo = lt === 'half' ? winHalfProbs(diff, lo) : winIntProbs(diff, lo);
+  var pHi = ht === 'half' ? winHalfProbs(diff, hi) : winIntProbs(diff, hi);
+  return [0.5 * pLo[0] + 0.5 * pHi[0], 0.5 * pLo[1] + 0.5 * pHi[1]];
+}
+
+function winLineRaw(diff, line) {
+  var t = detectType(line);
+  if (t === 'half') return winHalfProbs(diff, line);
+  if (t === 'integer') return winIntProbs(diff, line);
+  return winQtrProbs(diff, line);
+}
+
+function winLineNorm(diff, line) {
+  var r = winLineRaw(diff, line);
+  var total = r[0] + r[1];
+  return [r[0] / total, r[1] / total];
+}
+
+function winObjective(lamH, lamA, lines) {
+  if (lamH <= 0 || lamA <= 0) return 1e10;
+  var diff = goalDiff(lamH, lamA);
+  var total = 0;
+  for (var lv in lines) {
+    var od = lines[lv];
+    var fp = fairProb(od.home, od.away);
+    var mp = winLineNorm(diff, parseFloat(lv));
+    total += (mp[0] - fp[0]) * (mp[0] - fp[0]) + (mp[1] - fp[1]) * (mp[1] - fp[1]);
+  }
+  return total;
+}
+
+function nelderMead(lines, maxIter) {
+  if (maxIter === undefined) maxIter = 200;
+  var simplex = [[1.5, 1.5], [2.5, 1.5], [1.5, 2.5]];
+  var fvals = [
+    winObjective(simplex[0][0], simplex[0][1], lines),
+    winObjective(simplex[1][0], simplex[1][1], lines),
+    winObjective(simplex[2][0], simplex[2][1], lines)
+  ];
+  var alpha = 1, gamma = 2, rho = 0.5, sigma = 0.5;
+  for (var iter = 0; iter < maxIter; iter++) {
+    var idx = [0,1,2].sort(function(a,b){ return fvals[a] - fvals[b]; });
+    simplex = [simplex[idx[0]], simplex[idx[1]], simplex[idx[2]]];
+    fvals = [fvals[idx[0]], fvals[idx[1]], fvals[idx[2]]];
+    var std = Math.sqrt(((fvals[1]-fvals[0])*(fvals[1]-fvals[0]) + (fvals[2]-fvals[0])*(fvals[2]-fvals[0])) / 3);
+    if (std < 1e-12) break;
+    var x0 = [(simplex[0][0] + simplex[1][0]) / 2, (simplex[0][1] + simplex[1][1]) / 2];
+    var xr = [x0[0] + alpha * (x0[0] - simplex[2][0]), x0[1] + alpha * (x0[1] - simplex[2][1])];
+    var fr = winObjective(xr[0], xr[1], lines);
+    if (fr >= fvals[0] && fr < fvals[1]) {
+      simplex[2] = xr; fvals[2] = fr;
+    } else if (fr < fvals[0]) {
+      var xe = [x0[0] + gamma * (xr[0] - x0[0]), x0[1] + gamma * (xr[1] - x0[1])];
+      var fe = winObjective(xe[0], xe[1], lines);
+      simplex[2] = fe < fr ? xe : xr;
+      fvals[2] = Math.min(fe, fr);
+    } else {
+      var xc = [x0[0] + rho * (simplex[2][0] - x0[0]), x0[1] + rho * (simplex[2][1] - x0[1])];
+      var fc = winObjective(xc[0], xc[1], lines);
+      if (fc < fvals[2]) {
+        simplex[2] = xc; fvals[2] = fc;
+      } else {
+        for (var si = 1; si < 3; si++) {
+          simplex[si] = [simplex[0][0] + sigma * (simplex[si][0] - simplex[0][0]),
+                         simplex[0][1] + sigma * (simplex[si][1] - simplex[0][1])];
+          fvals[si] = winObjective(simplex[si][0], simplex[si][1], lines);
+        }
+      }
+    }
+  }
+  return { lamH: simplex[0][0], lamA: simplex[0][1], sse: fvals[0] };
+}
+
+function winOptimize(lines) {
+  var best = { lamH: 1.5, lamA: 1.5, sse: Infinity };
+  for (var lh = 0.3; lh <= 5.0; lh += 0.2) {
+    for (var la = 0.3; la <= 5.0; la += 0.2) {
+      var sse = winObjective(lh, la, lines);
+      if (sse < best.sse) { best = { lamH: lh, lamA: la, sse: sse }; }
+    }
+  }
+  var refined = nelderMead(lines);
+  if (refined.sse < best.sse) best = refined;
+  return best;
+}
+
+// 根据 win 数据构建双变量泊松 lines 对象
+function buildWinPoissonLines(win) {
+  var lines = {};
+  // 基础盘口
+  if (win.g && win.gg && win.ho && win.ao) {
+    var gDir = win.g;
+    var ggVal = parseFloat(win.gg);
+    var hcapRaw = (ggVal - 1) / 4;
+    var handicap = (gDir === 'H') ? -hcapRaw : hcapRaw;
+    var hv = parseFloat(win.ho);
+    var av = parseFloat(win.ao);
+    if (!isNaN(handicap) && !isNaN(hv) && !isNaN(av) && hv >= 1.01 && av >= 1.01) {
+      lines[handicap.toFixed(2)] = { home: hv, away: av };
+    }
+  }
+  // HV 盘口
+  var varStr = win.var || '';
+  if (varStr) {
+    var parts = varStr.split(',');
+    for (var vi = 0; vi + 4 < parts.length; vi += 5) {
+      var dir = parts[vi];
+      var ggVal2 = parseFloat(parts[vi + 1]);
+      var homeOdds = parseFloat(parts[vi + 2]);
+      var awayOdds = parseFloat(parts[vi + 3]);
+      var hcapRaw2 = (ggVal2 - 1) / 4;
+      var hcap2 = (dir === 'H') ? -hcapRaw2 : hcapRaw2;
+      var key = hcap2.toFixed(2);
+      if (!lines[key] && !isNaN(homeOdds) && !isNaN(awayOdds) && homeOdds >= 1.01 && awayOdds >= 1.01) {
+        lines[key] = { home: homeOdds, away: awayOdds };
+      }
+    }
+  }
+  return lines;
+}
+
+function computeWinDeviations(lamH, lamA, lines) {
+  var diff = goalDiff(lamH, lamA);
+  var devs = {};
+  for (var lv in lines) {
+    var od = lines[lv];
+    var fp = fairProb(od.home, od.away);
+    var mp = winLineNorm(diff, parseFloat(lv));
+    devs[lv] = {
+      home: (mp[0] - fp[0]) * 100,
+      away: (mp[1] - fp[1]) * 100
+    };
+  }
+  return devs;
+}
+
+function computeWinGoalDiffBins(lamH, lamA) {
+  if (lamH === null || lamA === null) return null;
+  var diff = goalDiff(lamH, lamA);
+  var bucketRanges = [[-WIN_MAX_G,-4],[-3,-3],[-2,-2],[-1,-1],[0,0],[1,1],[2,2],[3,3],[4,WIN_MAX_G]];
+  var result = [];
+  for (var bi = 0; bi < bucketRanges.length; bi++) {
+    result.push(diffSum(diff, bucketRanges[bi][0], bucketRanges[bi][1]));
+  }
+  return result;
+}
+</script>
+</body>
+</html>

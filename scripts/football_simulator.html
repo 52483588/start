@@ -1,0 +1,1525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>足球比分模拟器 · 闯关概率模型</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: #f5f7fa; color: #333; }
+
+.sticky-header { position: sticky; top: 0; background: #fff; z-index: 100; padding: 12px 24px 8px; border-bottom: 2px solid #e0e0e0; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.main-header { font-size: 26px; font-weight: bold; color: #1F4E79; text-align: center; margin-bottom: 10px; }
+.sub-header { font-size: 17px; font-weight: 600; color: #2C3E50; margin: 18px 0 10px; border-bottom: 2px solid #e0e0e0; padding-bottom: 5px; }
+
+.nav-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.nav-tab { padding: 7px 18px; border: none; border-radius: 6px 6px 0 0; background: #e8edf3; color: #555; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; }
+.nav-tab:hover { background: #d0d8e8; }
+.nav-tab.active { background: #1F4E79; color: #fff; }
+
+.match-info { display: flex; gap: 20px; flex-wrap: wrap; margin: 8px 0; }
+.match-info .mi-item { background: #f0f4f8; border-radius: 6px; padding: 6px 14px; font-size: 13px; }
+.match-info .mi-label { color: #888; font-size: 11px; }
+.match-info .mi-val { font-weight: 600; color: #1F4E79; }
+
+.selectors { display: flex; gap: 12px; margin: 8px 0; }
+.selectors select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; min-width: 180px; }
+
+.metric-row { display: flex; gap: 12px; margin: 10px 0; }
+.metric-box { flex: 1; background: #f8f9fa; border-radius: 8px; padding: 14px 10px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+.metric-value { font-size: 26px; font-weight: bold; color: #1F4E79; }
+.metric-label { font-size: 12px; color: #6c757d; margin-top: 4px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #1F4E79; color: #fff; padding: 7px 8px; position: sticky; top: 0; }
+td { padding: 6px 8px; border-bottom: 1px solid #eee; }
+tr:nth-child(even) { background: #f9f9f9; }
+tr:hover { background: #e8f0fe; }
+
+.btn { padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
+.btn-primary { background: #1F4E79; color: #fff; }
+.btn-primary:hover { background: #163a5c; }
+.btn-secondary { background: #6c757d; color: #fff; }
+.btn-secondary:hover { background: #545b62; }
+.btn-success { background: #198754; color: #fff; }
+.btn-danger { background: #dc3545; color: #fff; }
+
+.page-content { padding: 16px 24px; }
+
+.sidebar { position: fixed; right: 0; top: 0; width: 260px; height: 100vh; background: #fff; box-shadow: -2px 0 8px rgba(0,0,0,0.08); padding: 20px 16px; overflow-y: auto; z-index: 200; display: none; }
+.sidebar.open { display: block; }
+.sidebar h3 { font-size: 15px; color: #1F4E79; margin-bottom: 12px; }
+.sidebar .form-group { margin-bottom: 14px; }
+.sidebar label { font-size: 12px; color: #666; display: block; margin-bottom: 4px; }
+.sidebar input[type=number] { width: 100%; padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; }
+
+.load-area { max-width: 600px; margin: 60px auto; text-align: center; }
+.load-area h2 { color: #1F4E79; margin-bottom: 20px; }
+.folder-btn { display: inline-block; padding: 14px 36px; background: #1F4E79; color: #fff; border-radius: 8px; cursor: pointer; font-size: 16px; }
+.folder-btn:hover { background: #163a5c; }
+#folderInput { display: none; }
+
+.prob-high { background: #d4edda !important; font-weight: bold; }
+.prob-medium { background: #fff3cd !important; }
+.payout-high { background: #cfe2ff !important; }
+
+.chart-container { width: 100%; max-width: 500px; margin: 10px auto; }
+.bar-chart { display: flex; align-items: flex-end; gap: 3px; height: 200px; padding: 10px 0 0; border-bottom: 1px solid #ccc; }
+.bar-chart .bar { flex: 1; background: #1F4E79; border-radius: 3px 3px 0 0; position: relative; min-width: 8px; transition: height 0.3s; }
+.bar-chart .bar-label { position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #666; }
+.bar-chart .bar-val { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #333; white-space: nowrap; }
+
+.analysis-table th, .analysis-table td { font-size: 12px; padding: 5px 6px; }
+.highlight-cell { background: #d4edda !important; font-weight: bold; }
+
+.spinner { border: 3px solid #f3f3f3; border-top: 3px solid #1F4E79; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+.filter-row { display: flex; gap: 10px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
+.filter-row select, .filter-row input { padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+
+.top-right-btns { position: fixed; right: 20px; top: 20px; z-index: 300; display: flex; gap: 8px; }
+
+.panel-section { background: #fff; border-radius: 8px; padding: 16px; margin: 12px 0; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.panel-title { font-size: 15px; font-weight: 600; color: #1F4E79; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #e0e0e0; }
+.highlight-row { background: #fffbeb !important; }
+.ev-positive { color: #2ec4b6; font-weight: bold; }
+.ev-negative { color: #e63946; font-weight: bold; }
+.advice-card { padding: 14px; border-radius: 8px; margin: 10px 0; border-left: 4px solid; }
+.advice-warning { background: #fff8e1; border-color: #f59e0b; }
+.advice-info { background: #e3f2fd; border-color: #2196f3; }
+.advice-success { background: #e8f5e9; border-color: #4caf50; }
+.advice-caption { color: #888; font-size: 12px; margin-top: 10px; }
+
+.expander { border: 1px solid #e0e0e0; border-radius: 6px; margin: 8px 0; }
+.expander-header { padding: 8px 14px; background: #f8f9fa; cursor: pointer; font-size: 13px; font-weight: 500; color: #555; border-radius: 6px; user-select: none; }
+.expander-header:hover { background: #e8edf3; }
+.expander-body { padding: 12px 14px; display: none; font-size: 13px; line-height: 1.8; }
+.expander.open .expander-body { display: block; }
+
+.svg-chart { width: 100%; max-width: 640px; margin: 10px auto; display: block; }
+</style>
+</head>
+<body>
+
+<div id="loadPage" class="load-area">
+<h2>⚽ 足球比分模拟器</h2>
+<p style="color:#666; margin-bottom:24px;">请选择包含 XML 数据的文件夹<br>（例如 <code>Hisdata/20260608_080030</code>）</p>
+<label class="folder-btn" for="folderInput">📁 选择文件夹</label>
+<input type="file" id="folderInput" webkitdirectory directory multiple accept=".xml">
+<div id="loadStatus" style="margin-top:16px; color:#666;"></div>
+</div>
+
+<div id="appPage" style="display:none;">
+
+<div class="sticky-header">
+<div class="main-header">⚽ 足球比分模拟器 · 闯关概率模型</div>
+<div class="nav-tabs">
+<button class="nav-tab active" data-page="home" onclick="switchPage('home')">🏠 首页</button>
+<button class="nav-tab" data-page="odds" onclick="switchPage('odds')">📋 赔率一览</button>
+<button class="nav-tab" data-page="goals" onclick="switchPage('goals')">⚽ 总进球</button>
+<button class="nav-tab" data-page="scores" onclick="switchPage('scores')">📊 比分</button>
+<button class="nav-tab" data-page="records" onclick="switchPage('records')">📋 分析记录库</button>
+</div>
+<div class="match-info" id="matchInfo"></div>
+<div class="selectors">
+<select id="leagueSelect" onchange="onLeagueChange()"></select>
+<select id="matchSelect" onchange="onMatchChange()"></select>
+</div>
+</div>
+
+<div class="top-right-btns">
+<button class="btn btn-primary" onclick="runSimulation()">🚀 开始模拟</button>
+<button class="btn btn-secondary" onclick="toggleSidebar()">⚙️ 设置</button>
+</div>
+
+<div class="sidebar" id="sidebar">
+<h3>⚙️ 模拟设置</h3>
+<div class="form-group">
+<label>模拟次数</label>
+<select id="simTimes" style="width:100%;padding:5px;">
+<option value="10000">10,000 次（快速）</option>
+<option value="100000">100,000 次（标准）</option>
+<option value="1000000" selected>1,000,000 次（精确）</option>
+</select>
+</div>
+<hr style="margin:14px 0;">
+<h3>🎯 主队闯关概率</h3>
+<div class="form-group" id="homeProbInputs"></div>
+<hr style="margin:14px 0;">
+<h3>🎯 客队闯关概率</h3>
+<div class="form-group" id="awayProbInputs"></div>
+<div id="simStatus" style="margin-top:12px;font-size:13px;"></div>
+</div>
+
+<div class="page-content" id="pageContent"></div>
+</div>
+
+<script>
+
+const state = {
+xmlData: {},
+parsed: {
+numberofgoals: {},
+correctscore: {},
+halffull: {},
+odds_config: {},
+overunder: {},
+windrawwin: {},
+windrawwinfirsthalf: {},
+winodds: {},
+orderedIds: []
+},
+leagueMatchMap: {},
+selectedMatchId: null,
+simData: null,
+analysisRecords: [],
+currentPage: 'home'
+};
+
+function parseNumberofgoals(xmlStr) {
+const parser = new DOMParser();
+const doc = parser.parseFromString(xmlStr, 'text/xml');
+const result = {};
+const ordered = [];
+const fixtures = doc.querySelectorAll('Fixture');
+fixtures.forEach(f => {
+const id = f.getAttribute('id');
+if (!id) return;
+ordered.push(id);
+const data = {};
+for (let i = 1; i <= 6; i++) {
+data[`h${i}`] = parseFloat(f.getAttribute(`h${i}`)) || 0;
+data[`a${i}`] = parseFloat(f.getAttribute(`a${i}`)) || 0;
+}
+result[id] = data;
+});
+return { result, ordered };
+}
+
+function parseCorrectscore(xmlStr) {
+const parser = new DOMParser();
+const doc = parser.parseFromString(xmlStr, 'text/xml');
+const result = {};
+const fixtures = doc.querySelectorAll('Fixture');
+fixtures.forEach(f => {
+const id = f.getAttribute('id');
+if (!id) return;
+const data = {};
+for (let i = 1; i <= 10; i++) data[`h${i}`] = parseFloat(f.getAttribute(`h${i}`)) || 0;
+for (let i = 1; i <= 10; i++) data[`a${i}`] = parseFloat(f.getAttribute(`a${i}`)) || 0;
+for (let i = 11; i <= 16; i++) data[`o${i}`] = parseFloat(f.getAttribute(`o${i}`)) || 0;
+result[id] = data;
+});
+return result;
+}
+
+function parseHalffull(xmlStr) {
+const parser = new DOMParser();
+const doc = parser.parseFromString(xmlStr, 'text/xml');
+const result = {};
+const fields = ['hh','hd','ha','dh','dd','da','ah','ad','aa'];
+doc.querySelectorAll('Fixture').forEach(f => {
+const id = f.getAttribute('id');
+if (!id) return;
+const data = {};
+fields.forEach(fld => { data[fld] = parseFloat(f.getAttribute(fld)) || 0; });
+result[id] = data;
+});
+return result;
+}
+
+function parseOddsConfig(xmlStr) {
+const parser = new DOMParser();
+const doc = parser.parseFromString(xmlStr, 'text/xml');
+const result = {};
+const fields = ['gt','st','sh','sa'];
+doc.querySelectorAll('Fixture').forEach(f => {
+const id = f.getAttribute('id');
+if (!id) return;
+const data = {};
+fields.forEach(fld => { data[fld] = f.getAttribute(fld) || ''; });
+result[id] = data;
+});
+return result;
+}
+
+function parseOverunder(xmlStr) {
+const parser = new DOMParser();
+const doc = parser.parseFromString(xmlStr, 'text/xml');
+const result = {};
+doc.querySelectorAll('Fixture').forEach(f => {
+const id = f.getAttribute('id');
+if (!id) return;
+result[id] = {
+oo: parseFloat(f.getAttribute('oo')) || 0,
+uo: parseFloat(f.getAttribute('uo')) || 0,
+li: parseFloat(f.getAttribute('li')) || 0
+};
+});
+return result;
+}
+
+function parseWindrawwin(xmlStr) {
+const parser = new DOMParser();
+const doc = parser.parseFromString(xmlStr, 'text/xml');
+const result = {};
+doc.querySelectorAll('Fixture').forEach(f => {
+const id = f.getAttribute('id');
+if (!id) return;
+result[id] = {
+ho: parseFloat(f.getAttribute('ho')) || 0,
+do: parseFloat(f.getAttribute('do')) || 0,
+ao: parseFloat(f.getAttribute('ao')) || 0
+};
+});
+return result;
+}
+
+function parseWindrawwinfirsthalf(xmlStr) {
+return parseWindrawwin(xmlStr);
+}
+
+function parseWinodds(xmlStr) {
+const parser = new DOMParser();
+const doc = parser.parseFromString(xmlStr, 'text/xml');
+const result = {};
+doc.querySelectorAll('Fixture').forEach(f => {
+const id = f.getAttribute('id');
+if (!id) return;
+const data = {
+g: f.getAttribute('g') || '',
+gg: parseFloat(f.getAttribute('gg')) || 0,
+ho: parseFloat(f.getAttribute('ho')) || 0,
+ao: parseFloat(f.getAttribute('ao')) || 0,
+var: []
+};
+const varStr = f.getAttribute('var') || '';
+if (varStr.trim()) data.var = varStr.split(',').map(v => v.trim());
+result[id] = data;
+});
+return result;
+}
+
+document.getElementById('folderInput').addEventListener('change', function(e) {
+const files = Array.from(e.target.files).filter(f => f.name.endsWith('.xml'));
+if (files.length === 0) {
+setLoadStatus('❌ 未找到 XML 文件，请重新选择文件夹', 'red');
+return;
+}
+setLoadStatus(`📡 正在读取 ${files.length} 个 XML 文件...`, '#666');
+let loaded = 0;
+files.forEach(file => {
+const reader = new FileReader();
+reader.onload = function(ev) {
+state.xmlData[file.name] = ev.target.result;
+loaded++;
+if (loaded === files.length) {
+parseAllXml();
+}
+};
+reader.readAsText(file);
+});
+});
+
+function setLoadStatus(msg, color) {
+const el = document.getElementById('loadStatus');
+el.innerHTML = msg;
+el.style.color = color || '#666';
+}
+
+function parseAllXml() {
+setLoadStatus('🔄 正在解析 XML 数据...', '#666');
+try {
+for (const [filename, content] of Object.entries(state.xmlData)) {
+if (filename.includes('numberofgoals')) {
+const { result, ordered } = parseNumberofgoals(content);
+state.parsed.numberofgoals = result;
+state.parsed.orderedIds = ordered;
+} else if (filename.includes('correctscore')) {
+state.parsed.correctscore = parseCorrectscore(content);
+} else if (filename.includes('halffull')) {
+state.parsed.halffull = parseHalffull(content);
+} else if (filename.includes('odds_config')) {
+state.parsed.odds_config = parseOddsConfig(content);
+} else if (filename.includes('overunder')) {
+state.parsed.overunder = parseOverunder(content);
+} else if (filename.includes('windrawwinfirsthalf')) {
+state.parsed.windrawwinfirsthalf = parseWindrawwinfirsthalf(content);
+} else if (filename.includes('windrawwin')) {
+state.parsed.windrawwin = parseWindrawwin(content);
+} else if (filename.includes('winodds')) {
+state.parsed.winodds = parseWinodds(content);
+}
+}
+buildLeagueMap();
+setLoadStatus('✅ 数据加载完成！正在启动...', 'green');
+setTimeout(() => {
+document.getElementById('loadPage').style.display = 'none';
+document.getElementById('appPage').style.display = 'block';
+initApp();
+}, 500);
+} catch (err) {
+setLoadStatus('❌ 解析失败：' + err.message, 'red');
+}
+}
+
+function buildLeagueMap() {
+const map = {};
+const order = [];
+for (const [id, cfg] of Object.entries(state.parsed.odds_config)) {
+const league = cfg.st || '未分类';
+if (!map[league]) { map[league] = []; order.push(league); }
+if (!map[league].includes(id)) map[league].push(id);
+}
+
+for (const league of Object.keys(map)) {
+map[league].sort((a, b) => parseInt(a) - parseInt(b));
+}
+state.leagueMatchMap = map;
+
+const firstLeague = order[0];
+state.selectedMatchId = map[firstLeague][0];
+}
+
+function initApp() {
+renderLeagueSelect();
+renderMatchInfo();
+renderProbInputs();
+autoUpdateProbs();
+switchPage('home');
+}
+
+function renderLeagueSelect() {
+const ls = document.getElementById('leagueSelect');
+ls.innerHTML = '';
+for (const league of Object.keys(state.leagueMatchMap)) {
+const opt = document.createElement('option');
+opt.value = league;
+opt.textContent = league;
+ls.appendChild(opt);
+}
+
+const currentLeague = getLeagueForMatch(state.selectedMatchId);
+ls.value = currentLeague;
+renderMatchSelect();
+}
+
+function getLeagueForMatch(matchId) {
+for (const [league, ids] of Object.entries(state.leagueMatchMap)) {
+if (ids.includes(matchId)) return league;
+}
+return Object.keys(state.leagueMatchMap)[0];
+}
+
+function renderMatchSelect() {
+const league = document.getElementById('leagueSelect').value;
+const ms = document.getElementById('matchSelect');
+ms.innerHTML = '';
+const ids = state.leagueMatchMap[league] || [];
+ids.forEach(id => {
+const info = getMatchBasicInfo(id);
+const opt = document.createElement('option');
+opt.value = id;
+opt.textContent = `${id} - ${info.sh || '?'} vs ${info.sa || '?'}`;
+ms.appendChild(opt);
+});
+if (ids.includes(state.selectedMatchId)) {
+ms.value = state.selectedMatchId;
+} else {
+state.selectedMatchId = ids[0];
+ms.value = ids[0];
+}
+}
+
+function onLeagueChange() {
+renderMatchSelect();
+}
+
+function onMatchChange() {
+state.selectedMatchId = document.getElementById('matchSelect').value;
+renderMatchInfo();
+autoUpdateProbs();
+
+switchPage(state.currentPage);
+}
+
+function renderMatchInfo() {
+const info = getMatchBasicInfo(state.selectedMatchId);
+let gt = info.gt || '';
+
+if (gt && gt.length >= 14) {
+gt = `${gt.substring(0,4)}-${gt.substring(4,6)}-${gt.substring(6,8)} ${gt.substring(9)}`;
+}
+document.getElementById('matchInfo').innerHTML = `
+<div class="mi-item"><div class="mi-label">🕒 时间</div><div class="mi-val">${gt || '未知'}</div></div>
+<div class="mi-item"><div class="mi-label">🏆 赛事</div><div class="mi-val">${info.st || '未知'}</div></div>
+<div class="mi-item"><div class="mi-label">🏠 主队</div><div class="mi-val">${info.sh || '未知'}</div></div>
+<div class="mi-item"><div class="mi-label">✈️ 客队</div><div class="mi-val">${info.sa || '未知'}</div></div>
+`;
+}
+
+function getMatchBasicInfo(matchId) {
+return state.parsed.odds_config[matchId] || { gt: '', st: '', sh: '', sa: '' };
+}
+
+function calcE(oddsList) {
+
+let sumInv = 0;
+for (let i = 0; i < 6; i++) sumInv += 1 / (oddsList[i] || 1);
+if (sumInv === 0) return [0, 0, 0, 0, 0];
+const C = 1 / sumInv;
+const D = [];
+for (let i = 0; i < 5; i++) D.push(C / (oddsList[i] || 1));
+const E = [];
+let cumD = 0;
+for (let i = 0; i < 5; i++) {
+const denom = 1 - cumD;
+E.push(denom > 0 ? D[i] / denom : 0);
+cumD += D[i];
+}
+return E;
+}
+
+function oddsToProbs(homeOdds, awayOdds) {
+while (homeOdds.length < 6) homeOdds.push(1);
+while (awayOdds.length < 6) awayOdds.push(1);
+return [calcE(homeOdds.slice(0,6)), calcE(awayOdds.slice(0,6))];
+}
+
+function renderProbInputs() {
+const homeDiv = document.getElementById('homeProbInputs');
+const awayDiv = document.getElementById('awayProbInputs');
+homeDiv.innerHTML = '';
+awayDiv.innerHTML = '';
+const labels = ['进0球概率', '进1球概率', '进2球概率', '进3球概率', '进4球概率'];
+for (let i = 0; i < 5; i++) {
+const hp = document.createElement('div');
+hp.style.marginBottom = '6px';
+hp.innerHTML = `<label style="font-size:12px;">${labels[i]}</label><input type="number" id="home_p_${i}" step="0.001" min="0" max="1" value="0" style="width:100%;padding:4px;">`;
+homeDiv.appendChild(hp);
+
+const ap = document.createElement('div');
+ap.style.marginBottom = '6px';
+ap.innerHTML = `<label style="font-size:12px;">${labels[i]}</label><input type="number" id="away_p_${i}" step="0.001" min="0" max="1" value="0" style="width:100%;padding:4px;">`;
+awayDiv.appendChild(ap);
+}
+}
+
+function autoUpdateProbs() {
+const id = state.selectedMatchId;
+const ng = state.parsed.numberofgoals[id];
+if (!ng) { console.warn('无进球数数据'); return; }
+const homeOdds = [ng.h1||1, ng.h2||1, ng.h3||1, ng.h4||1, ng.h5||1, ng.h6||1];
+const awayOdds = [ng.a1||1, ng.a2||1, ng.a3||1, ng.a4||1, ng.a5||1, ng.a6||1];
+const [homeP, awayP] = oddsToProbs(homeOdds, awayOdds);
+for (let i = 0; i < 5; i++) {
+document.getElementById(`home_p_${i}`).value = homeP[i].toFixed(4);
+document.getElementById(`away_p_${i}`).value = awayP[i].toFixed(4);
+}
+}
+
+function simulateGoals(probs, nSims) {
+const goals = new Array(nSims).fill(0);
+for (let s = 0; s < nSims; s++) {
+let firstFailure = -1;
+for (let j = 0; j < 5; j++) {
+if (Math.random() < probs[j]) {
+firstFailure = j;
+break;
+}
+}
+goals[s] = firstFailure === -1 ? 5 : firstFailure;
+}
+return goals;
+}
+
+function runSimulation() {
+const nSims = parseInt(document.getElementById('simTimes').value);
+const homeP = [], awayP = [];
+for (let i = 0; i < 5; i++) {
+homeP.push(parseFloat(document.getElementById(`home_p_${i}`).value) || 0);
+awayP.push(parseFloat(document.getElementById(`away_p_${i}`).value) || 0);
+}
+
+const statusEl = document.getElementById('simStatus');
+statusEl.innerHTML = `<div class="spinner"></div><div>正在进行 ${nSims.toLocaleString()} 次模拟...</div>`;
+
+setTimeout(() => {
+const t0 = performance.now();
+
+const homeGoals = simulateGoals(homeP, nSims);
+const awayGoals = simulateGoals(awayP, nSims);
+
+const scoreMap = {};
+const totalGoalsMap = {};
+let homeWin = 0, draw = 0, awayWin = 0;
+let expHome = 0, expAway = 0;
+
+const homeGoalCount = [0,0,0,0,0,0];
+const awayGoalCount = [0,0,0,0,0,0];
+
+for (let s = 0; s < nSims; s++) {
+const h = homeGoals[s], a = awayGoals[s];
+const score = `${h}-${a}`;
+scoreMap[score] = (scoreMap[score] || 0) + 1;
+const total = h + a;
+totalGoalsMap[total] = (totalGoalsMap[total] || 0) + 1;
+if (h > a) homeWin++;
+else if (h === a) draw++;
+else awayWin++;
+expHome += h;
+expAway += a;
+homeGoalCount[Math.min(h,5)]++;
+awayGoalCount[Math.min(a,5)]++;
+}
+
+const homeWinProb = homeWin / nSims;
+const drawProb = draw / nSims;
+const awayWinProb = awayWin / nSims;
+expHome /= nSims;
+expAway /= nSims;
+
+const scoreCounts = Object.entries(scoreMap).map(([score, cnt]) => ({ score, cnt, prob: cnt / nSims }));
+scoreCounts.sort((a, b) => b.prob - a.prob);
+
+const totalGoalsArr = [];
+for (let g = 0; g <= 7; g++) {
+totalGoalsArr.push({ goals: g, cnt: totalGoalsMap[g] || 0, prob: (totalGoalsMap[g] || 0) / nSims });
+}
+
+const elapsed = (performance.now() - t0) / 1000;
+
+state.simData = {
+homeWinProb, drawProb, awayWinProb,
+expHome, expAway,
+scoreCounts, totalGoalsArr,
+homeGoalCount: homeGoalCount.map(c => c / nSims),
+awayGoalCount: awayGoalCount.map(c => c / nSims),
+nSims, elapsed
+};
+
+saveToAnalysisRecords();
+
+statusEl.innerHTML = `<span style="color:green;">✅ 模拟完成！耗时 ${elapsed.toFixed(3)} 秒</span>`;
+switchPage(state.currentPage);
+}, 50);
+}
+
+function saveToAnalysisRecords() {
+const id = state.selectedMatchId;
+const data = state.simData;
+if (!data) return;
+
+const info = getMatchBasicInfo(id);
+let gt = info.gt || '';
+if (gt && gt.length >= 14) {
+gt = `${gt.substring(0,4)}-${gt.substring(4,6)}-${gt.substring(6,8)} ${gt.substring(9)}`;
+}
+
+let totalProbStr = '';
+if (data.totalGoalsArr) {
+const parts = [];
+for (let g = 0; g <= 6; g++) {
+parts.push(`${g}:${(data.totalGoalsArr[g].prob * 100).toFixed(1)}%`);
+}
+const plus = data.totalGoalsArr[7] ? data.totalGoalsArr[7].prob : 0;
+parts.push(`7+:${(plus * 100).toFixed(1)}%`);
+totalProbStr = parts.join(' ');
+}
+
+const wdw = state.parsed.windrawwin[id] || { ho: 0, do: 0, ao: 0 };
+
+const record = {
+match_id: id,
+time: gt,
+league: info.st || '未知',
+home: info.sh || '未知',
+away: info.sa || '未知',
+homeWinProb: data.homeWinProb,
+drawProb: data.drawProb,
+awayWinProb: data.awayWinProb,
+expHome: data.expHome,
+expAway: data.expAway,
+expHo: data.homeWinProb * wdw.ho,
+expDo: data.drawProb * wdw.do,
+expAo: data.awayWinProb * wdw.ao,
+totalProbStr: totalProbStr,
+recordTime: new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+};
+
+const idx = state.analysisRecords.findIndex(r => r.match_id === id);
+if (idx >= 0) {
+state.analysisRecords[idx] = record;
+} else {
+state.analysisRecords.push(record);
+}
+}
+
+function switchPage(page) {
+state.currentPage = page;
+
+document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+document.querySelector(`.nav-tab[data-page="${page}"]`).classList.add('active');
+renderPageContent(page);
+}
+
+function renderPageContent(page) {
+const el = document.getElementById('pageContent');
+if (page === 'home') el.innerHTML = renderHomePage();
+else if (page === 'odds') el.innerHTML = renderOddsPage();
+else if (page === 'goals') el.innerHTML = renderGoalsPage();
+else if (page === 'scores') el.innerHTML = renderScoresPage();
+else if (page === 'records') el.innerHTML = renderRecordsPage();
+}
+
+function renderHomePage() {
+const data = state.simData;
+if (!data) {
+return `<div style="text-align:center;padding:60px;color:#888;">
+👈 请在右侧设置面板点击 <b>🚀 开始模拟</b> 生成结果
+</div>`;
+}
+const id = state.selectedMatchId;
+const wdw = state.parsed.windrawwin[id] || { ho: 0, do: 0, ao: 0 };
+
+const probs = [data.homeWinProb, data.drawProb, data.awayWinProb];
+const odds = [wdw.ho, wdw.do, wdw.ao];
+const payouts = [probs[0]*odds[0], probs[1]*odds[1], probs[2]*odds[2]];
+
+const top10 = data.scoreCounts.slice(0, 10);
+
+const totalHtml = renderBarChart(data.totalGoalsArr.slice(0, 8), '总进球', 'prob');
+
+const homeDist = data.homeGoalCount.slice(0, 6).map((p, i) => ({ label: i, prob: p }));
+const awayDist = data.awayGoalCount.slice(0, 6).map((p, i) => ({ label: i, prob: p }));
+
+return `
+<div class="sub-header">🎯 核心指标</div>
+<div class="metric-row">
+<div class="metric-box"><div class="metric-value">${(data.homeWinProb*100).toFixed(2)}%</div><div class="metric-label">🏠 主队胜率</div></div>
+<div class="metric-box"><div class="metric-value">${(data.drawProb*100).toFixed(2)}%</div><div class="metric-label">🤝 平概率</div></div>
+<div class="metric-box"><div class="metric-value">${(data.awayWinProb*100).toFixed(2)}%</div><div class="metric-label">✈️ 客队胜率</div></div>
+<div class="metric-box"><div class="metric-value">${data.expHome.toFixed(3)}</div><div class="metric-label">⚽ 主队期望进球</div></div>
+<div class="metric-box"><div class="metric-value">${data.expAway.toFixed(3)}</div><div class="metric-label">⚽ 客队期望进球</div></div>
+</div>
+
+<div class="sub-header">📊 胜平负概率与赔付</div>
+<table>
+<tr><th>项目</th><th>主胜</th><th>平局</th><th>客胜</th></tr>
+<tr><td>概率</td><td>${(probs[0]*100).toFixed(2)}%</td><td>${(probs[1]*100).toFixed(2)}%</td><td>${(probs[2]*100).toFixed(2)}%</td></tr>
+<tr><td>赔率</td><td>${odds[0].toFixed(2)}</td><td>${odds[1].toFixed(2)}</td><td>${odds[2].toFixed(2)}</td></tr>
+<tr><td>期望赔付</td><td>${payouts[0].toFixed(4)}</td><td>${payouts[1].toFixed(4)}</td><td>${payouts[2].toFixed(4)}</td></tr>
+</table>
+
+<div class="sub-header">🏠 主队 / ✈️ 客队 进球分布</div>
+<div style="display:flex;gap:20px;">
+<div style="flex:1;">
+<div class="chart-container">${renderBarChart(homeDist, '主队进球', 'prob')}</div>
+</div>
+<div style="flex:1;">
+<div class="chart-container">${renderBarChart(awayDist, '客队进球', 'prob')}</div>
+</div>
+</div>
+
+<div class="sub-header">🏆 概率前十比分 & 总进球分布</div>
+<div style="display:flex;gap:20px;">
+<div style="flex:1;">
+<table>
+<tr><th>排名</th><th>比分</th><th>概率</th></tr>
+${top10.map((sc, i) => `<tr><td>${i+1}</td><td><b>${sc.score}</b></td><td>${(sc.prob*100).toFixed(4)}%</td></tr>`).join('')}
+</table>
+</div>
+<div style="flex:1;">
+${totalHtml}
+</div>
+</div>
+<div style="color:#888;font-size:12px;margin-top:8px;">模拟次数: ${data.nSims.toLocaleString()} 次 | 耗时: ${data.elapsed.toFixed(3)} 秒</div>
+`;
+}
+
+function renderBarChart(dataArr, xLabel, valKey) {
+const maxVal = Math.max(...dataArr.map(d => d.prob || d[valKey] || 0)) * 1.15;
+const bars = dataArr.map(d => {
+const val = d.prob || d[valKey] || 0;
+const pct = maxVal > 0 ? (val / maxVal * 100) : 0;
+const label = d.label !== undefined ? d.label : d.goals;
+return `<div class="bar" style="height:${pct}%;" title="${label}: ${(val*100).toFixed(2)}%">
+<div class="bar-val">${(val*100).toFixed(1)}%</div>
+<div class="bar-label">${label}</div>
+</div>`;
+}).join('');
+return `<div class="bar-chart">${bars}</div><div style="text-align:center;font-size:12px;color:#666;margin-top:18px;">${xLabel}</div>`;
+}
+
+function renderOddsPage() {
+const id = state.selectedMatchId;
+let html = '';
+
+const info = getMatchBasicInfo(id);
+html += `<div class="sub-header">🏟️ 比赛信息 (odds_config.xml)</div>`;
+html += `<table><tr><th>时间</th><th>赛事</th><th>主队</th><th>客队</th></tr>
+<tr><td>${info.gt||''}</td><td>${info.st||''}</td><td>${info.sh||''}</td><td>${info.sa||''}</td></tr></table>`;
+
+const ng = state.parsed.numberofgoals[id];
+if (ng) {
+html += `<div class="sub-header">⚽ 进球数赔率 (numberofgoals.xml)</div>`;
+html += `<table><tr><th>进球数</th><th>主队赔率</th><th>客队赔率</th></tr>`;
+for (let i = 0; i <= 5; i++) {
+html += `<tr><td>${i}${i===5?'+':''}</td><td>${ng[`h${i+1}`]||0}</td><td>${ng[`a${i+1}`]||0}</td></tr>`;
+}
+html += `</table>`;
+}
+
+html += `<div class="sub-header">🎯 正确比分 & 半全场赔率</div><div style="display:flex;gap:20px;">`;
+const cs = state.parsed.correctscore[id];
+const csLabels = ['1-0','2-0','2-1','3-0','3-1','3-2','4-0','4-1','4-2','4-3',
+'0-1','0-2','1-2','0-3','1-3','2-3','0-4','1-4','2-4','3-4',
+'0-0','1-1','2-2','3-3','4-4','其他'];
+if (cs) {
+html += `<div style="flex:1;"><table><tr><th>比分</th><th>赔率</th></tr>`;
+csLabels.forEach((lbl, i) => {
+let val = 0;
+if (i < 10) val = cs[`h${i+1}`] || 0;
+else if (i < 20) val = cs[`a${i-9}`] || 0;
+else val = cs[`o${i-9}`] || 0;
+html += `<tr><td>${lbl}</td><td>${val.toFixed(2)}</td></tr>`;
+});
+html += `</table></div>`;
+}
+const hf = state.parsed.halffull[id];
+const hfLabels = ['胜胜','胜平','胜负','平胜','平平','平负','负胜','负平','负负'];
+const hfKeys = ['hh','hd','ha','dh','dd','da','ah','ad','aa'];
+if (hf) {
+html += `<div style="flex:1;"><table><tr><th>选项</th><th>赔率</th></tr>`;
+hfKeys.forEach((k, i) => {
+html += `<tr><td>${hfLabels[i]}(${k})</td><td>${hf[k].toFixed(2)}</td></tr>`;
+});
+html += `</table></div>`;
+}
+html += `</div>`;
+
+html += `<div class="sub-header">📏 大小球 & 胜平负 & 上半场胜平负</div><div style="display:flex;gap:20px;">`;
+const ou = state.parsed.overunder[id];
+if (ou) {
+html += `<div style="flex:1;"><table><tr><th>项目</th><th>数值</th></tr>
+<tr><td>大球赔率(oo)</td><td>${ou.oo.toFixed(2)}</td></tr>
+<tr><td>小球赔率(uo)</td><td>${ou.uo.toFixed(2)}</td></tr>
+<tr><td>临界值(li/4)</td><td>${(ou.li/4).toFixed(2)}</td></tr></table></div>`;
+}
+const wdw = state.parsed.windrawwin[id];
+if (wdw) {
+html += `<div style="flex:1;"><table><tr><th>项目</th><th>赔率</th></tr>
+<tr><td>主胜(ho)</td><td>${wdw.ho.toFixed(2)}</td></tr>
+<tr><td>平局(do)</td><td>${wdw.do.toFixed(2)}</td></tr>
+<tr><td>客胜(ao)</td><td>${wdw.ao.toFixed(2)}</td></tr></table></div>`;
+}
+const fh = state.parsed.windrawwinfirsthalf[id];
+if (fh) {
+html += `<div style="flex:1;"><table><tr><th>项目</th><th>赔率</th></tr>
+<tr><td>主胜(ho)</td><td>${fh.ho.toFixed(2)}</td></tr>
+<tr><td>平局(do)</td><td>${fh.do.toFixed(2)}</td></tr>
+<tr><td>客胜(ao)</td><td>${fh.ao.toFixed(2)}</td></tr></table></div>`;
+}
+html += `</div>`;
+
+const wo = state.parsed.winodds[id];
+if (wo) {
+html += `<div class="sub-header">🎲 让球赔率 (winodds.xml)</div>`;
+const ggTrans = wo.gg ? (wo.gg / 4.0 - 0.25).toFixed(2) : '0.00';
+html += `<table><tr><th>项目</th><th>数值</th></tr>
+<tr><td>让球(g)</td><td>${wo.g}</td></tr>
+<tr><td>让球赔率(gg)</td><td>${ggTrans}</td></tr>
+<tr><td>主队(ho)</td><td>${wo.ho.toFixed(2)}</td></tr>
+<tr><td>客队(ao)</td><td>${wo.ao.toFixed(2)}</td></tr>
+<tr><td>变量(var)</td><td>${(wo.var||[]).join(', ')}</td></tr></table>`;
+}
+
+return html;
+}
+
+function getHandicapType(hcp) {
+const f = hcp % 1;
+if (Math.abs(f) < 0.01) return 'integer';
+if (Math.abs(f - 0.5) < 0.01) return 'half';
+if (Math.abs(f - 0.25) < 0.01 || Math.abs(f - 0.75) < 0.01) return 'quarter';
+return 'other';
+}
+
+function handicapTypeLabel(hcp) {
+const labels = { 'integer': '整数盘', 'half': '半数盘', 'quarter': '四分之一球盘', 'other': '特殊' };
+return labels[getHandicapType(hcp)] || '未知';
+}
+
+function overReturnSingle(hcp, goals, odds) {
+const t = getHandicapType(hcp);
+if (t === 'integer') {
+if (goals > hcp + 0.0001) return odds;
+if (Math.abs(goals - hcp) < 0.0001) return 1.0;
+return 0.0;
+}
+if (t === 'half') return goals > hcp + 0.0001 ? odds : 0.0;
+return 0.0;
+}
+
+function underReturnSingle(hcp, goals, odds) {
+const t = getHandicapType(hcp);
+if (t === 'integer') {
+if (goals < hcp - 0.0001) return odds;
+if (Math.abs(goals - hcp) < 0.0001) return 1.0;
+return 0.0;
+}
+if (t === 'half') return goals < hcp - 0.0001 ? odds : 0.0;
+return 0.0;
+}
+
+function overReturn(hcp, goals, odds) {
+const t = getHandicapType(hcp);
+if (t === 'quarter') {
+return 0.5 * overReturnSingle(hcp - 0.25, goals, odds) +
+0.5 * overReturnSingle(hcp + 0.25, goals, odds);
+}
+return overReturnSingle(hcp, goals, odds);
+}
+
+function underReturn(hcp, goals, odds) {
+const t = getHandicapType(hcp);
+if (t === 'quarter') {
+return 0.5 * underReturnSingle(hcp - 0.25, goals, odds) +
+0.5 * underReturnSingle(hcp + 0.25, goals, odds);
+}
+return underReturnSingle(hcp, goals, odds);
+}
+
+function _overResultType(hcp, goals) {
+const t = getHandicapType(hcp);
+if (t === 'integer') {
+if (goals > hcp + 0.0001) return 'win';
+if (Math.abs(goals - hcp) < 0.0001) return 'push';
+return 'lose';
+}
+if (t === 'half') return goals > hcp + 0.0001 ? 'win' : 'lose';
+return 'lose';
+}
+
+function _underResultType(hcp, goals) {
+const t = getHandicapType(hcp);
+if (t === 'integer') {
+if (goals < hcp - 0.0001) return 'win';
+if (Math.abs(goals - hcp) < 0.0001) return 'push';
+return 'lose';
+}
+if (t === 'half') return goals < hcp - 0.0001 ? 'win' : 'lose';
+return 'lose';
+}
+
+const _RESULT_MAP = { 'win': '赢', 'push': '走水', 'lose': '输' };
+
+function overReturnDesc(hcp, goals) {
+const t = getHandicapType(hcp);
+if (t === 'quarter') {
+return _RESULT_MAP[_overResultType(hcp - 0.25, goals)] + '/'
++ _RESULT_MAP[_overResultType(hcp + 0.25, goals)];
+}
+return _RESULT_MAP[_overResultType(hcp, goals)];
+}
+
+function underReturnDesc(hcp, goals) {
+const t = getHandicapType(hcp);
+if (t === 'quarter') {
+return _RESULT_MAP[_underResultType(hcp - 0.25, goals)] + '/'
++ _RESULT_MAP[_underResultType(hcp + 0.25, goals)];
+}
+return _RESULT_MAP[_underResultType(hcp, goals)];
+}
+
+function calcFairOdds(hcp, probValues, goalLabels) {
+let overWinCoeff = 0.0, overPushSum = 0.0;
+let underWinCoeff = 0.0, underPushSum = 0.0;
+const t = getHandicapType(hcp);
+
+for (let i = 0; i < goalLabels.length; i++) {
+const g = parseGoal(goalLabels[i]);
+const p = probValues[i];
+
+if (t === 'quarter') {
+const lower = hcp - 0.25, upper = hcp + 0.25;
+const lt = getHandicapType(lower), ut = getHandicapType(upper);
+
+const lWin = ((lt === 'integer' && g > lower + 0.0001) || (lt === 'half' && g > lower + 0.0001)) ? 1 : 0;
+const lPush = (lt === 'integer' && Math.abs(g - lower) < 0.0001) ? 1 : 0;
+const uWin = ((ut === 'integer' && g > upper + 0.0001) || (ut === 'half' && g > upper + 0.0001)) ? 1 : 0;
+const uPush = (ut === 'integer' && Math.abs(g - upper) < 0.0001) ? 1 : 0;
+
+overWinCoeff += p * 0.5 * (lWin + uWin);
+overPushSum += p * 0.5 * (lPush + uPush);
+
+const lUWin = ((lt === 'integer' && g < lower - 0.0001) || (lt === 'half' && g < lower - 0.0001)) ? 1 : 0;
+const lUPush = (lt === 'integer' && Math.abs(g - lower) < 0.0001) ? 1 : 0;
+const uUWin = ((ut === 'integer' && g < upper - 0.0001) || (ut === 'half' && g < upper - 0.0001)) ? 1 : 0;
+const uUPush = (ut === 'integer' && Math.abs(g - upper) < 0.0001) ? 1 : 0;
+
+underWinCoeff += p * 0.5 * (lUWin + uUWin);
+underPushSum += p * 0.5 * (lUPush + uUPush);
+} else {
+const isInt = t === 'integer';
+if ((isInt && g > hcp + 0.0001) || (!isInt && g > hcp + 0.0001)) overWinCoeff += p;
+if (isInt && Math.abs(g - hcp) < 0.0001) overPushSum += p;
+if ((isInt && g < hcp - 0.0001) || (!isInt && g < hcp - 0.0001)) underWinCoeff += p;
+if (isInt && Math.abs(g - hcp) < 0.0001) underPushSum += p;
+}
+}
+
+const fairOver = overWinCoeff > 0 ? (1 - overPushSum) / overWinCoeff : Infinity;
+const fairUnder = underWinCoeff > 0 ? (1 - underPushSum) / underWinCoeff : Infinity;
+const fairOverProb = 1.0 / fairOver;
+const fairUnderProb = 1.0 / fairUnder;
+return { fairOver, fairUnder, fairOverProb, fairUnderProb };
+}
+
+function parseGoal(label) {
+const s = String(label).trim();
+if (s === '7+' || s === '7以上' || s === '7球以上') return 7.0;
+return parseFloat(s) || 0.0;
+}
+
+function renderGoalsPage() {
+const data = state.simData;
+if (!data) {
+return `<div style="text-align:center;padding:60px;color:#888;">请先在首页完成模拟，再查看总进球页面。</div>`;
+}
+const id = state.selectedMatchId;
+const ou = state.parsed.overunder[id];
+const oo = ou ? ou.oo : 0;
+const uo = ou ? ou.uo : 0;
+const hcp = ou ? ou.li / 4.0 : 0;
+
+const totalArr = data.totalGoalsArr;
+const probValues = totalArr.map(d => d.prob);
+const goalLabels = totalArr.map(d => d.goals >= 7 ? '7+' : String(d.goals));
+const goalValues = totalArr.map(d => d.goals >= 7 ? 7.0 : d.goals);
+
+let expectedGoals = 0;
+for (let i = 0; i < goalValues.length; i++) expectedGoals += goalValues[i] * probValues[i];
+
+const cumProbs = [];
+let cum = 0;
+for (const p of probValues) { cum += p; cumProbs.push(cum); }
+
+const hcpType = getHandicapType(hcp);
+const hcpTypeLabel = handicapTypeLabel(hcp);
+
+const overReturns = goalValues.map(g => overReturn(hcp, g, oo));
+const underReturns = goalValues.map(g => underReturn(hcp, g, uo));
+const overDescs = goalValues.map(g => overReturnDesc(hcp, g));
+const underDescs = goalValues.map(g => underReturnDesc(hcp, g));
+
+let evOver = 0, evUnder = 0;
+for (let i = 0; i < probValues.length; i++) {
+evOver += probValues[i] * overReturns[i];
+evUnder += probValues[i] * underReturns[i];
+}
+evOver -= 1.0;
+evUnder -= 1.0;
+const evOverPct = evOver * 100;
+const evUnderPct = evUnder * 100;
+
+const { fairOver, fairUnder, fairOverProb, fairUnderProb } = calcFairOdds(hcp, probValues, goalLabels);
+
+const impliedOver = 1.0 / oo;
+const impliedUnder = 1.0 / uo;
+const overroundPct = (impliedOver + impliedUnder) * 100;
+
+const modeIdx = probValues.indexOf(Math.max(...probValues));
+const modeLabel = goalLabels[modeIdx];
+const pGeq4 = probValues.slice(4).reduce((a, b) => a + b, 0);
+const pLeq2 = probValues.slice(0, 3).reduce((a, b) => a + b, 0);
+const pEq3 = probValues.length > 3 ? probValues[3] : 0;
+
+let html = '';
+
+html += `<div class="panel-section"><div class="panel-title">📐 基准数据</div>`;
+html += `<div class="metric-row">
+<div class="metric-box"><div class="metric-value">${hcp.toFixed(2)}</div><div class="metric-label">🏠 大小球盘口</div></div>
+<div class="metric-box"><div class="metric-value">${oo.toFixed(3)}</div><div class="metric-label">🤝 大球赔率</div></div>
+<div class="metric-box"><div class="metric-value">${uo.toFixed(3)}</div><div class="metric-label">🚀 小球赔率</div></div>
+<div class="metric-box"><div class="metric-value">${(fairOverProb*100).toFixed(2)}%</div><div class="metric-label">⚽ 大球公平概率</div></div>
+<div class="metric-box"><div class="metric-value">${(fairUnderProb*100).toFixed(2)}%</div><div class="metric-label">⚽ 小球公平概率</div></div>
+</div></div>`;
+
+html += `<div class="panel-section"><div class="panel-title">📈 期望值（EV）分析</div>`;
+html += `<div class="metric-row">
+<div class="metric-box"><div class="metric-value ${evOverPct >= 0 ? 'ev-positive' : 'ev-negative'}">${evOverPct.toFixed(2)}%</div><div class="metric-label">🏠 大球 EV</div></div>
+<div class="metric-box"><div class="metric-value ${evUnderPct >= 0 ? 'ev-positive' : 'ev-negative'}">${evUnderPct.toFixed(2)}%</div><div class="metric-label">🚀 小球 EV</div></div>
+<div class="metric-box"><div class="metric-value">${fairOver === Infinity ? '∞' : fairOver.toFixed(3)}</div><div class="metric-label">🏠 大球公平赔率</div></div>
+<div class="metric-box"><div class="metric-value">${fairUnder === Infinity ? '∞' : fairUnder.toFixed(3)}</div><div class="metric-label">🚀 小球公平赔率</div></div>
+</div>`;
+
+html += renderEVBarChart(
+[`大球 ${hcp.toFixed(2)} @ ${oo.toFixed(3)}`, `小球 ${hcp.toFixed(2)} @ ${uo.toFixed(3)}`],
+[evOverPct, evUnderPct]
+);
+
+html += `<div class="expander" id="evExpander">
+<div class="expander-header" onclick="this.parentElement.classList.toggle('open')">📝 EV 计算过程</div>
+<div class="expander-body">
+<b>大球 EV</b> = ${probValues.map((p,i) => `${(p*100).toFixed(1)}%×${overReturns[i].toFixed(3)}`).join(' + ')} − 1 = <b>${evOverPct.toFixed(2)}%</b><br><br>
+<b>小球 EV</b> = ${probValues.map((p,i) => `${(p*100).toFixed(1)}%×${underReturns[i].toFixed(3)}`).join(' + ')} − 1 = <b>${evUnderPct.toFixed(2)}%</b><br><br>
+<b>隐含概率：</b>大球 ${(impliedOver*100).toFixed(1)}% + 小球 ${(impliedUnder*100).toFixed(1)}% = <b>${overroundPct.toFixed(1)}%</b>（抽水 ${(overroundPct-100).toFixed(1)}%）
+</div>
+</div></div>`;
+
+html += `<div class="panel-section"><div class="panel-title">📊 概览指标</div>`;
+html += `<div class="metric-row">
+<div class="metric-box"><div class="metric-value">${expectedGoals.toFixed(2)}</div><div class="metric-label">期望进球数</div></div>
+<div class="metric-box"><div class="metric-value">${modeLabel}</div><div class="metric-label">最可能进球</div></div>
+<div class="metric-box"><div class="metric-value">${(pGeq4*100).toFixed(1)}%</div><div class="metric-label">P(≥4球)</div></div>
+<div class="metric-box"><div class="metric-value">${(pLeq2*100).toFixed(1)}%</div><div class="metric-label">P(≤2球)</div></div>
+<div class="metric-box"><div class="metric-value">${(pEq3*100).toFixed(1)}%</div><div class="metric-label">P(=3球)</div></div>
+</div></div>`;
+
+html += `<div class="panel-section"><div class="panel-title">📋 盘口结算明细：${hcp.toFixed(2)}（${hcpTypeLabel}）</div>`;
+html += `<div style="color:#888;font-size:12px;margin-bottom:8px;">大球 @ ${oo.toFixed(3)} / 小球 @ ${uo.toFixed(3)}</div>`;
+html += `<table>
+<tr><th>进球</th><th>概率</th><th>大球结算</th><th>大球返还</th><th>小球结算</th><th>小球返还</th></tr>`;
+for (let i = 0; i < goalLabels.length; i++) {
+const cls = probValues[i] > 0.10 ? 'class="highlight-row"' : '';
+html += `<tr ${cls}>
+<td>${goalLabels[i]}</td>
+<td>${(probValues[i]*100).toFixed(1)}%</td>
+<td>${overDescs[i]}</td>
+<td>${overReturns[i].toFixed(3)}</td>
+<td>${underDescs[i]}</td>
+<td>${underReturns[i].toFixed(3)}</td>
+</tr>`;
+}
+html += `</table>`;
+if (hcpType === 'quarter') {
+const lower = hcp - 0.25, upper = hcp + 0.25;
+html += `<div style="color:#888;font-size:12px;margin-top:6px;">💡 四分之一球盘：投注额平分为两份，分别按 ${lower.toFixed(2)}（${handicapTypeLabel(lower)}）和 ${upper.toFixed(2)}（${handicapTypeLabel(upper)}）结算。</div>`;
+}
+html += `</div>`;
+
+html += `<div class="panel-section"><div class="panel-title">📊 进球概率分布</div>`;
+html += renderGoalDistChart(goalLabels, probValues, modeIdx);
+html += `</div>`;
+
+html += `<div class="panel-section"><div class="panel-title">🏷️ 赔率对比：市场 vs 公平</div>`;
+html += renderOddsCompareChart(oo, uo, fairOver, fairUnder);
+html += `</div>`;
+
+const betterSide = evOverPct >= evUnderPct ? '大球' : '小球';
+const betterEV = evOverPct >= evUnderPct ? evOverPct : evUnderPct;
+const betterOdds = evOverPct >= evUnderPct ? oo : uo;
+if (evOverPct < 0 && evUnderPct < 0) {
+html += `<div class="panel-section"><div class="panel-title">💡 投注建议</div>`;
+html += `<div class="advice-card advice-warning">
+<b>⚠️ 双方均为负期望值（-EV）</b><br><br>
+大球 EV = ${evOverPct.toFixed(2)}%　|　小球 EV = ${evUnderPct.toFixed(2)}%<br><br>
+博彩公司抽水约 <b>${(overroundPct-100).toFixed(1)}%</b>。无论投哪边，长期来看都会亏损。
+</div>`;
+html += `<div class="advice-card advice-info">
+<b>如果必须选择：偏好 ${betterSide}</b><br><br>
+${betterSide} 期望损失（${betterEV.toFixed(2)}%）${Math.abs(evOverPct-evUnderPct) > 1 ? '明显小于' : '略小于'}另一方向（差异 ${Math.abs(evOverPct-evUnderPct).toFixed(2)}%）。<br><br>
+${betterSide === '大球' ? '进球分布呈右偏形态，高进球概率集中，大球相对有利。' : '进球偏向低端，小球概率优势明显。'}
+</div>`;
+} else {
+html += `<div class="panel-section"><div class="panel-title">💡 投注建议</div>`;
+html += `<div class="advice-card advice-success">
+<b>✅ 正 EV 机会！偏好 ${betterSide}</b><br><br>
+${betterSide} 期望收益 <b>+${betterEV.toFixed(2)}%</b>，赔率 ${betterOdds.toFixed(3)}<br><br>
+市场定价低于真实概率，存在价值投注机会。
+</div>`;
+}
+
+if (hcpType === 'quarter') {
+const nearInt = Math.round(hcp);
+let nearIntProb = 0;
+for (let i = 0; i < goalLabels.length; i++) {
+if (Math.abs(parseGoal(goalLabels[i]) - nearInt) < 0.01) { nearIntProb = probValues[i]; break; }
+}
+html += `<div class="advice-card advice-info">
+<b>四分之一球盘策略</b><br><br>
+当前盘口 ${hcp.toFixed(2)}，拆分结算为 ${(hcp-0.25).toFixed(2)} / ${(hcp+0.25).toFixed(2)}。<br><br>
+若整数盘 <b>${nearInt}</b> 进球概率 (${(nearIntProb*100).toFixed(1)}%) 较高，整数盘走水退本金的特性可大幅降低风险。
+</div>`;
+}
+
+html += `<div class="advice-caption">⚠️ <b>博彩有风险，投注需谨慎！</b> 本文仅为数学分析参考，不构成实际投注建议。</div>`;
+
+return html;
+}
+
+function renderEVBarChart(evLabels, evVals) {
+const w = 640, h = 180, barH = 36, gap = 14, leftM = 180;
+const maxAbs = Math.max(Math.abs(Math.min(...evVals)), Math.abs(Math.max(...evVals)), 0.5);
+const scale = (w - leftM - 60) / (maxAbs * 2);
+
+let svg = `<svg class="svg-chart" viewBox="0 0 ${w} ${h}" style="max-width:100%;">`;
+
+const zeroX = leftM + maxAbs * scale;
+svg += `<line x1="${zeroX}" y1="10" x2="${zeroX}" y2="${h-20}" stroke="#94a3b8" stroke-dasharray="4,3" stroke-width="1"/>`;
+
+for (let i = 0; i < evLabels.length; i++) {
+const y = 20 + i * (barH + gap);
+const val = evVals[i];
+const color = val >= 0 ? '#2ec4b6' : '#e63946';
+const barW = Math.abs(val) * scale;
+const x = val >= 0 ? zeroX : zeroX - barW;
+
+svg += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="3" fill="${color}" opacity="0.85"/>`;
+
+const textX = val >= 0 ? x - 8 : x + barW + 8;
+const textAnchor = val >= 0 ? 'end' : 'start';
+svg += `<text x="${textX}" y="${y+barH/2+5}" text-anchor="${textAnchor}" font-size="12" fill="#333">${evLabels[i]}</text>`;
+
+const valX = val >= 0 ? x + barW + 5 : x - 5;
+const valAnchor = val >= 0 ? 'start' : 'end';
+svg += `<text x="${valX}" y="${y+barH/2+5}" text-anchor="${valAnchor}" font-size="12" font-weight="bold" fill="${color}">${val.toFixed(2)}%</text>`;
+}
+
+svg += `<text x="${zeroX}" y="${h-2}" text-anchor="middle" font-size="11" fill="#666">期望净收益 (%)</text>`;
+svg += `</svg>`;
+return svg;
+}
+
+function renderGoalDistChart(goalLabels, probValues, modeIdx) {
+const w = 640, h = 280, barW = 52, gap = 14, bottom = 40, top = 30;
+const pctValues = probValues.map(p => p * 100);
+const maxPct = Math.max(...pctValues) * 1.25;
+const scale = (h - top - bottom) / maxPct;
+const startX = (w - (goalLabels.length * (barW + gap) - gap)) / 2;
+
+let svg = `<svg class="svg-chart" viewBox="0 0 ${w} ${h}" style="max-width:100%;">`;
+
+svg += `<line x1="${startX-10}" y1="${top}" x2="${startX-10}" y2="${h-bottom}" stroke="#ccc" stroke-width="1"/>`;
+
+for (let i = 0; i < goalLabels.length; i++) {
+const x = startX + i * (barW + gap);
+const barH = pctValues[i] * scale;
+const y = h - bottom - barH;
+let color = '#94a3b8';
+if (pctValues[i] > 10) color = '#4361ee';
+if (i === modeIdx) color = '#f59e0b';
+
+svg += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="3" fill="${color}" opacity="0.9"/>`;
+
+svg += `<text x="${x+barW/2}" y="${y-6}" text-anchor="middle" font-size="11" fill="#333">${pctValues[i].toFixed(1)}%</text>`;
+
+svg += `<text x="${x+barW/2}" y="${h-bottom+16}" text-anchor="middle" font-size="12" fill="#666">${goalLabels[i]}</text>`;
+}
+
+svg += `<text x="10" y="${h/2}" text-anchor="middle" font-size="11" fill="#666" transform="rotate(-90,10,${h/2})">概率 (%)</text>`;
+svg += `<text x="${w/2}" y="${h-2}" text-anchor="middle" font-size="11" fill="#666">总进球</text>`;
+svg += `</svg>`;
+return svg;
+}
+
+function renderOddsCompareChart(overOdds, underOdds, fairOver, fairUnder) {
+const w = 500, h = 240, barW = 70, gap = 30, bottom = 40, top = 30;
+const allVals = [overOdds, underOdds, fairOver === Infinity ? overOdds * 1.5 : fairOver, fairUnder === Infinity ? underOdds * 1.5 : fairUnder];
+const maxVal = Math.max(...allVals) * 1.2;
+const scale = (h - top - bottom) / maxVal;
+
+const groups = [
+{ label: '大球', vals: [overOdds, fairOver === Infinity ? overOdds * 1.5 : fairOver] },
+{ label: '小球', vals: [underOdds, fairUnder === Infinity ? underOdds * 1.5 : fairUnder] }
+];
+
+const totalW = groups.length * (barW * 2 + 10) + (groups.length - 1) * gap;
+const startX = (w - totalW) / 2;
+
+let svg = `<svg class="svg-chart" viewBox="0 0 ${w} ${h}" style="max-width:100%;">`;
+
+for (let g = 0; g < groups.length; g++) {
+const gx = startX + g * (barW * 2 + 10 + gap);
+const colors = ['#94a3b8', '#4361ee'];
+const labels = ['市场', '公平'];
+
+for (let b = 0; b < 2; b++) {
+const x = gx + b * (barW + 6);
+const barH = groups[g].vals[b] * scale;
+const y = h - bottom - barH;
+
+svg += `<rect x="${x}" y="${y}" width="${barW-6}" height="${barH}" rx="3" fill="${colors[b]}" opacity="0.9"/>`;
+const dispVal = (g === 0 && b === 1 && fairOver === Infinity) ? '∞' : groups[g].vals[b].toFixed(3);
+svg += `<text x="${x+(barW-6)/2}" y="${y-6}" text-anchor="middle" font-size="10" fill="#333">${dispVal}</text>`;
+
+if (g === 0) {
+svg += `<text x="${x+(barW-6)/2}" y="${h-bottom+16}" text-anchor="middle" font-size="11" fill="#666">${labels[b]}</text>`;
+}
+}
+
+svg += `<text x="${gx+(barW*2+10)/2}" y="${h-2}" text-anchor="middle" font-size="12" font-weight="bold" fill="#1F4E79">${groups[g].label}</text>`;
+}
+
+svg += `<text x="10" y="${h/2}" text-anchor="middle" font-size="11" fill="#666" transform="rotate(-90,10,${h/2})">赔率</text>`;
+svg += `</svg>`;
+return svg;
+}
+
+function renderScoresPage() {
+const data = state.simData;
+if (!data) {
+return `<div style="text-align:center;padding:60px;color:#888;">请先在首页完成模拟</div>`;
+}
+const id = state.selectedMatchId;
+const cs = state.parsed.correctscore[id];
+const wdw = state.parsed.windrawwin[id] || {};
+
+const baseScores = ['1-0','2-0','2-1','3-0','3-1','3-2','4-0','4-1','4-2','4-3',
+'0-1','0-2','1-2','0-3','1-3','2-3','0-4','1-4','2-4','3-4'];
+const drawScores = ['0-0','1-1','2-2','3-3','4-4'];
+
+const oddsMap = {};
+if (cs) {
+baseScores.forEach((s, i) => {
+oddsMap[s] = i < 10 ? cs[`h${i+1}`] || 0 : cs[`a${i-9}`] || 0;
+});
+drawScores.forEach((s, i) => {
+oddsMap[s] = cs[`o${i+11}`] || 0;
+});
+oddsMap['其他'] = cs['o16'] || 0;
+}
+
+const rows = [];
+const probDict = {};
+data.scoreCounts.forEach(sc => { probDict[sc.score] = sc.prob; });
+
+baseScores.forEach(s => {
+const prob = probDict[s] || 0;
+const net = s.split('-').reduce((a, b) => parseInt(a) - parseInt(b));
+rows.push({ score: s, net, prob, odds: oddsMap[s] || 0, payout: prob * (oddsMap[s] || 0) });
+});
+drawScores.forEach(s => {
+const prob = probDict[s] || 0;
+rows.push({ score: s, net: 0, prob, odds: oddsMap[s] || 0, payout: prob * (oddsMap[s] || 0) });
+});
+const otherProb = 1 - rows.reduce((sum, r) => sum + r.prob, 0);
+rows.push({ score: '其他', net: '-', prob: otherProb, odds: oddsMap['其他'] || 0, payout: otherProb * (oddsMap['其他'] || 0) });
+
+rows.sort((a, b) => b.payout - a.payout);
+
+let html = `<div class="sub-header">📊 比分详情 & 净胜球（按期望赔付排序）</div>`;
+html += `<table>
+<tr><th>比分</th><th>净胜球</th><th>概率</th><th>赔率</th><th>期望赔付</th></tr>`;
+rows.forEach(r => {
+const highPayout = r.payout >= (1 / (r.odds || 1)) * r.odds ? 'class="prob-high"' : '';
+html += `<tr ${highPayout}>
+<td><b>${r.score}</b></td>
+<td>${r.net}</td>
+<td>${(r.prob*100).toFixed(4)}%</td>
+<td>${r.odds ? r.odds.toFixed(2) : '-'}</td>
+<td>${r.payout.toFixed(4)}</td>
+</tr>`;
+});
+html += `</table>`;
+return html;
+}
+
+function renderRecordsPage() {
+if (state.analysisRecords.length === 0) {
+return `<div style="text-align:center;padding:60px;color:#888;">
+📋 暂无记录。请在首页运行模拟，核心数据将自动记录。
+</div>`;
+}
+
+const displayRows = state.analysisRecords.map(rec => {
+const goalProbs = {};
+for (let g = 0; g <= 7; g++) goalProbs[g] = '0.0%';
+if (rec.totalProbStr && rec.totalProbStr !== '待模拟') {
+rec.totalProbStr.split(' ').forEach(part => {
+if (part.includes(':')) {
+const [k, v] = part.split(':');
+const g = k === '7+' ? 7 : parseInt(k);
+goalProbs[g] = v;
+}
+});
+}
+return {
+match_id: rec.match_id,
+time: rec.time,
+league: rec.league,
+home: rec.home,
+away: rec.away,
+homeWinProb: `${(rec.homeWinProb * 100).toFixed(2)}%`,
+drawProb: `${(rec.drawProb * 100).toFixed(2)}%`,
+awayWinProb: `${(rec.awayWinProb * 100).toFixed(2)}%`,
+expHome: rec.expHome.toFixed(3),
+expAway: rec.expAway.toFixed(3),
+expHo: rec.expHo.toFixed(4),
+expDo: rec.expDo.toFixed(4),
+expAo: rec.expAo.toFixed(4),
+'0球': goalProbs[0],
+'1球': goalProbs[1],
+'2球': goalProbs[2],
+'3球': goalProbs[3],
+'4球': goalProbs[4],
+'5球': goalProbs[5],
+'6球': goalProbs[6],
+'7+球': goalProbs[7],
+recordTime: rec.recordTime
+};
+});
+
+const leagues = [...new Set(displayRows.map(r => r.league))];
+const leagueOptions = leagues.map(l => `<option value="${l}">${l}</option>`).join('');
+
+let html = `<div class="sub-header">📋 分析记录库 (共 ${displayRows.length} 条)</div>`;
+
+html += `<div class="filter-row">
+<label>筛选联赛:</label>
+<select id="filterLeague" multiple style="min-width:200px;">${leagueOptions}</select>
+<label>排序:</label>
+<select id="sortCol">
+<option value="recordTime" selected>记录时间</option>
+<option value="homeWinProb">胜概率</option>
+<option value="expHo">胜赔付</option>
+</select>
+<select id="sortDir">
+<option value="desc" selected>降序</option>
+<option value="asc">升序</option>
+</select>
+<button class="btn btn-secondary" onclick="filterRecords()">应用</button>
+<button class="btn btn-danger" onclick="clearRecords()" style="margin-left:auto;">🗑️ 清空</button>
+</div>`;
+
+html += `<div id="recordsTable">${renderRecordsTable(displayRows)}</div>`;
+
+html += `<button class="btn btn-success" style="margin-top:12px;" onclick="exportRecordsCSV()">📥 导出 CSV</button>`;
+
+return html;
+}
+
+function renderRecordsTable(rows) {
+const cols = ['time','league','home','away','homeWinProb','drawProb','awayWinProb',
+'expHome','expAway','expHo','expDo','expAo',
+'0球','1球','2球','3球','4球','5球','6球','7+球','recordTime'];
+const colLabels = {'time':'时间','league':'赛事','home':'主队','away':'客队',
+'homeWinProb':'胜概率','drawProb':'平概率','awayWinProb':'负概率',
+'expHome':'主进球','expAway':'客进球',
+'expHo':'胜赔付','expDo':'平赔付','expAo':'负赔付',
+'0球':'0球','1球':'1球','2球':'2球','3球':'3球',
+'4球':'4球','5球':'5球','6球':'6球','7+球':'7+球',
+'recordTime':'记录时间'};
+
+let html = `<table class="analysis-table"><tr>`;
+cols.forEach(c => { html += `<th>${colLabels[c]}</th>`; });
+html += `</tr>`;
+
+rows.forEach(rec => {
+html += `<tr>`;
+cols.forEach(c => {
+const val = rec[c] || '';
+const isGoalProb = ['0球','1球','2球','3球','4球','5球','6球','7+球'].includes(c);
+const numVal = parseFloat(val);
+const cls = (isGoalProb && numVal >= 9.5) ? 'class="highlight-cell"' : '';
+html += `<td ${cls}>${val}</td>`;
+});
+html += `</tr>`;
+});
+html += `</table>`;
+return html;
+}
+
+function filterRecords() {
+const sortCol = document.getElementById('sortCol').value;
+const sortDir = document.getElementById('sortDir').value;
+const filterSelect = document.getElementById('filterLeague');
+const selectedLeagues = Array.from(filterSelect.selectedOptions).map(o => o.value);
+let rows = [...state.analysisRecords.map(rec => {
+const goalProbs = {};
+for (let g = 0; g <= 7; g++) goalProbs[g] = '0.0%';
+if (rec.totalProbStr && rec.totalProbStr !== '待模拟') {
+rec.totalProbStr.split(' ').forEach(part => {
+if (part.includes(':')) {
+const [k, v] = part.split(':');
+const g = k === '7+' ? 7 : parseInt(k);
+goalProbs[g] = v;
+}
+});
+}
+return { ...rec, goalProbs };
+})];
+
+if (selectedLeagues.length > 0) {
+rows = rows.filter(r => selectedLeagues.includes(r.league));
+}
+
+rows.sort((a, b) => {
+let va = a[sortCol] || 0;
+let vb = b[sortCol] || 0;
+if (typeof va === 'string' && va.includes('%')) va = parseFloat(va) || 0;
+if (typeof vb === 'string' && vb.includes('%')) vb = parseFloat(vb) || 0;
+return sortDir === 'desc' ? vb - va : va - vb;
+});
+
+const displayRows = rows.map(r => ({
+match_id: r.match_id, time: r.time, league: r.league, home: r.home, away: r.away,
+homeWinProb: `${(r.homeWinProb * 100).toFixed(2)}%`,
+drawProb: `${(r.drawProb * 100).toFixed(2)}%`,
+awayWinProb: `${(r.awayWinProb * 100).toFixed(2)}%`,
+expHome: r.expHome.toFixed(3), expAway: r.expAway.toFixed(3),
+expHo: r.expHo.toFixed(4), expDo: r.expDo.toFixed(4), expAo: r.expAo.toFixed(4),
+'0球': r.goalProbs[0], '1球': r.goalProbs[1], '2球': r.goalProbs[2],
+'3球': r.goalProbs[3], '4球': r.goalProbs[4], '5球': r.goalProbs[5],
+'6球': r.goalProbs[6], '7+球': r.goalProbs[7],
+recordTime: r.recordTime
+}));
+
+document.getElementById('recordsTable').innerHTML = renderRecordsTable(displayRows);
+}
+
+function clearRecords() {
+if (confirm('确定要清空所有分析记录吗？')) {
+state.analysisRecords = [];
+switchPage('records');
+}
+}
+
+function exportRecordsCSV() {
+const BOM = '\uFEFF';
+const headers = ['时间','赛事','主队','客队','胜概率','平概率','负概率',
+'主进球','客进球','胜赔付','平赔付','负赔付',
+'0球','1球','2球','3球','4球','5球','6球','7+球','记录时间'];
+const rows = state.analysisRecords.map(rec => {
+const goalProbs = {};
+for (let g = 0; g <= 7; g++) goalProbs[g] = '0.0%';
+if (rec.totalProbStr && rec.totalProbStr !== '待模拟') {
+rec.totalProbStr.split(' ').forEach(part => {
+if (part.includes(':')) {
+const [k, v] = part.split(':');
+const g = k === '7+' ? 7 : parseInt(k);
+goalProbs[g] = v;
+}
+});
+}
+return [
+rec.time, rec.league, rec.home, rec.away,
+`${(rec.homeWinProb*100).toFixed(2)}%`,
+`${(rec.drawProb*100).toFixed(2)}%`,
+`${(rec.awayWinProb*100).toFixed(2)}%`,
+rec.expHome.toFixed(3), rec.expAway.toFixed(3),
+rec.expHo.toFixed(4), rec.expDo.toFixed(4), rec.expAo.toFixed(4),
+goalProbs[0], goalProbs[1], goalProbs[2], goalProbs[3],
+goalProbs[4], goalProbs[5], goalProbs[6], goalProbs[7],
+rec.recordTime
+];
+});
+
+const csvContent = BOM + [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = `analysis_records_${new Date().toISOString().slice(0,19).replace(/[T:]/g,'_')}.csv`;
+a.click();
+URL.revokeObjectURL(url);
+}
+
+function toggleSidebar() {
+document.getElementById('sidebar').classList.toggle('open');
+}
+</script>
+</body>
+</html>

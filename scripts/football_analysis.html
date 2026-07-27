@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>⚽ 足球分析记录库</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+font-family: "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+background: #f0f2f5;
+color: #1a1a1a;
+min-height: 100vh;
+}
+
+.top-header {
+background: linear-gradient(135deg, #1F4E79 0%, #2980b9 100%);
+color: #fff;
+padding: 18px 32px;
+display: flex;
+align-items: center;
+justify-content: space-between;
+box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+}
+.top-header h1 { font-size: 24px; font-weight: 700; letter-spacing: 1px; }
+.top-header .meta { font-size: 12px; opacity: 0.85; text-align: right; line-height: 1.8; }
+
+.layout { display: flex; min-height: calc(100vh - 66px); }
+
+.sidebar {
+width: 210px;
+min-width: 180px;
+background: #fff;
+border-right: 1px solid #e0e4ea;
+padding: 20px 16px;
+display: flex;
+flex-direction: column;
+gap: 18px;
+box-shadow: 2px 0 8px rgba(0,0,0,0.04);
+}
+.sidebar h3 {
+font-size: 13px;
+font-weight: 700;
+color: #1F4E79;
+text-transform: uppercase;
+letter-spacing: 0.5px;
+padding-bottom: 6px;
+border-bottom: 2px solid #e8f0fb;
+}
+.sidebar label { font-size: 12px; color: #555; display: block; margin-bottom: 4px; }
+.sidebar input[type="text"],
+.sidebar select {
+width: 100%;
+padding: 7px 9px;
+border: 1px solid #d1d8e0;
+border-radius: 6px;
+font-size: 13px;
+color: #333;
+background: #fafbfd;
+transition: border .2s;
+}
+.sidebar input[type="text"]:focus,
+.sidebar select:focus { border-color: #2980b9; outline: none; }
+
+.filter-group { display: flex; flex-direction: column; gap: 8px; }
+
+.league-list {
+max-height: 160px;
+overflow-y: auto;
+border: 1px solid #e0e4ea;
+border-radius: 6px;
+padding: 6px 8px;
+background: #fafbfd;
+}
+.league-list label {
+display: flex;
+align-items: center;
+gap: 6px;
+padding: 3px 0;
+font-size: 12px;
+color: #444;
+cursor: pointer;
+}
+.league-list input[type="checkbox"] { accent-color: #2980b9; }
+
+.sort-row { display: flex; gap: 8px; align-items: center; }
+.sort-row select { flex: 1; }
+.dir-btn {
+background: #eaf2fb;
+border: 1px solid #b5d4f0;
+border-radius: 6px;
+padding: 6px 10px;
+cursor: pointer;
+font-size: 14px;
+color: #1F4E79;
+transition: background .15s;
+white-space: nowrap;
+}
+.dir-btn:hover { background: #c5dff5; }
+
+.btn {
+width: 100%;
+padding: 9px;
+border: none;
+border-radius: 7px;
+cursor: pointer;
+font-size: 13px;
+font-weight: 600;
+transition: opacity .15s, transform .1s;
+}
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: #2980b9; color: #fff; }
+.btn-success { background: #27ae60; color: #fff; }
+.btn:hover { opacity: 0.9; }
+
+.main {
+flex: 1;
+padding: 20px 24px;
+overflow: hidden;
+display: flex;
+flex-direction: column;
+gap: 14px;
+}
+
+.section-title {
+font-size: 16px;
+font-weight: 700;
+color: #2C3E50;
+padding-bottom: 8px;
+border-bottom: 2px solid #e0e4ea;
+}
+
+.result-info {
+font-size: 12px;
+color: #777;
+display: flex;
+gap: 16px;
+flex-wrap: wrap;
+}
+.result-info span { display: flex; align-items: center; gap: 4px; }
+
+.table-wrapper {
+overflow-x: auto;
+overflow-y: auto;
+max-height: calc(100vh - 260px);
+border-radius: 10px;
+box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+background: #fff;
+}
+
+table {
+border-collapse: collapse;
+width: 100%;
+font-size: 12px;
+white-space: nowrap;
+}
+
+thead tr th {
+background: #1F4E79;
+color: #fff;
+padding: 9px 10px;
+font-weight: 600;
+text-align: center;
+cursor: pointer;
+user-select: none;
+position: sticky;
+top: 0;
+z-index: 2;
+border-right: 1px solid rgba(255,255,255,0.1);
+transition: background .15s;
+}
+thead tr th:hover { background: #2471a3; }
+thead tr th.th-sortable { cursor: pointer; background: #16375a; }
+thead tr th.th-sortable:hover { background: #1a4570; }
+thead tr th.sorted-asc::after { content: " ▲"; font-size: 10px; }
+thead tr th.sorted-desc::after { content: " ▼"; font-size: 10px; }
+
+tbody tr { transition: background .1s; }
+tbody tr:nth-child(even) { background: #f8fafd; }
+tbody tr:hover { background: #eaf4ff !important; }
+
+tbody td {
+padding: 7px 10px;
+text-align: center;
+border-bottom: 1px solid #f0f0f0;
+border-right: 1px solid #f0f0f0;
+}
+tbody td:nth-child(4),
+tbody td:nth-child(5),
+tbody td:nth-child(6) { text-align: left; }
+
+.hl-red { background-color: #ff4444 !important; color: #fff !important; font-weight: 700; border-radius: 4px; }
+.hl-yellow { background-color: #ffeb3b !important; color: #000 !important; font-weight: 700; border-radius: 4px; }
+.hl-green { background-color: #c8e6c9 !important; color: #1b5e20 !important; font-weight: 700; border-radius: 4px; }
+
+.goal-sep { border-left: 2px solid #b0bec5 !important; }
+
+.legend {
+display: flex;
+gap: 16px;
+flex-wrap: wrap;
+font-size: 11px;
+color: #555;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; }
+.legend-dot {
+width: 14px; height: 14px;
+border-radius: 3px;
+display: inline-block;
+}
+
+.loading {
+display: flex;
+align-items: center;
+justify-content: center;
+height: 200px;
+font-size: 15px;
+color: #888;
+gap: 10px;
+}
+.spinner {
+width: 22px; height: 22px;
+border: 3px solid #ddd;
+border-top: 3px solid #2980b9;
+border-radius: 50%;
+animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.empty-tip {
+text-align: center;
+padding: 60px 20px;
+color: #aaa;
+font-size: 14px;
+}
+
+.file-section {
+display: flex;
+align-items: center;
+gap: 10px;
+flex-wrap: wrap;
+}
+.file-label {
+display: inline-flex;
+align-items: center;
+gap: 6px;
+padding: 8px 14px;
+background: #2980b9 !important;
+color: #ffffff !important;
+border-radius: 7px;
+cursor: pointer;
+font-size: 13px !important;
+font-weight: 700;
+border: 2px solid #1a6599;
+box-shadow: 0 2px 6px rgba(41,128,185,0.35);
+transition: background .15s, box-shadow .15s;
+letter-spacing: 0.3px;
+margin-bottom: 0 !important;
+}
+.file-label:hover {
+background: #1a6599 !important;
+box-shadow: 0 3px 10px rgba(41,128,185,0.5);
+}
+#fileInput { display: none; }
+.file-info { font-size: 12px; color: #888; }
+
+@media (max-width: 768px) {
+.layout { flex-direction: column; }
+.sidebar { width: 100%; border-right: none; border-bottom: 1px solid #e0e4ea; }
+.main { padding: 14px; }
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f0f2f5; }
+::-webkit-scrollbar-thumb { background: #b0bec5; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #78909c; }
+
+.row-select-col {
+width: 30px;
+min-width: 30px;
+padding: 7px 4px !important;
+text-align: center !important;
+}
+.row-select-col input[type="radio"] {
+width: 14px;
+height: 14px;
+accent-color: #2980b9;
+cursor: pointer;
+}
+thead .row-select-col { cursor: default; }
+
+.btn-analyze {
+background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+color: #fff;
+border: none;
+border-radius: 7px;
+padding: 6px 14px;
+font-size: 13px;
+font-weight: 700;
+cursor: pointer;
+white-space: nowrap;
+box-shadow: 0 2px 6px rgba(211,84,0,0.3);
+transition: opacity .15s, transform .1s;
+letter-spacing: 0.3px;
+}
+.btn-analyze:hover { opacity: 0.88; }
+.btn-analyze:active { transform: scale(0.97); }
+
+.section-title-row {
+display: flex;
+align-items: center;
+justify-content: space-between;
+}
+
+.report-overlay {
+position: fixed;
+top: 0; left: 0; right: 0; bottom: 0;
+background: rgba(0,0,0,0.6);
+z-index: 9999;
+display: flex;
+align-items: flex-start;
+justify-content: center;
+padding-top: 30px;
+animation: fadeIn 0.25s;
+overflow-y: auto;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+
+.report-card {
+background: #fff;
+border-radius: 14px;
+width: 680px;
+max-width: 95vw;
+box-shadow: 0 12px 40px rgba(0,0,0,0.28);
+animation: slideIn 0.3s ease;
+margin-bottom: 40px;
+overflow: hidden;
+}
+
+.report-header {
+background: linear-gradient(135deg, #1a3c6e 0%, #2563a8 100%);
+color: #fff;
+padding: 18px 24px;
+display: flex;
+align-items: center;
+justify-content: space-between;
+}
+.report-header h2 { font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
+.report-close {
+background: rgba(255,255,255,0.15);
+border: none; color: #fff;
+width: 30px; height: 30px;
+border-radius: 50%;
+font-size: 16px; cursor: pointer;
+display: flex; align-items: center; justify-content: center;
+transition: background .15s;
+line-height: 1;
+}
+.report-close:hover { background: rgba(255,255,255,0.3); }
+
+.report-body { padding: 24px; }
+
+.report-section {
+margin-bottom: 20px;
+}
+.report-section:last-child { margin-bottom: 0; }
+
+.report-section-title {
+font-size: 14px;
+font-weight: 700;
+color: #1a3c6e;
+margin-bottom: 10px;
+padding-bottom: 6px;
+border-bottom: 2px solid #e8f0fb;
+display: flex;
+align-items: center;
+gap: 6px;
+}
+
+.report-info-grid {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 8px 24px;
+}
+.report-info-grid .info-item {
+display: flex;
+align-items: baseline;
+gap: 8px;
+font-size: 14px;
+padding: 4px 0;
+}
+.report-info-grid .info-label { color: #666; font-size: 13px; min-width: 54px; white-space: nowrap; }
+.report-info-grid .info-value { color: #1a1a1a; font-weight: 600; }
+
+.report-info-grid.single-col .info-item { grid-column: span 2; }
+
+.info-flex-row {
+display: flex;
+gap: 24px;
+flex-wrap: wrap;
+margin-bottom: 6px;
+}
+.info-flex-row .info-item {
+font-size: 14px;
+padding: 4px 0;
+display: flex;
+align-items: baseline;
+gap: 8px;
+}
+.info-flex-row .info-item .info-label { color: #666; font-size: 13px; min-width: 54px; white-space: nowrap; }
+.info-flex-row .info-item .info-value { color: #1a1a1a; font-weight: 600; }
+
+.info-single-row {
+margin-bottom: 0;
+}
+.info-single-row .info-item {
+font-size: 14px;
+padding: 4px 0;
+display: flex;
+align-items: baseline;
+gap: 8px;
+}
+.info-single-row .info-item .info-label { color: #666; font-size: 13px; min-width: 54px; white-space: nowrap; }
+.info-single-row .info-item .info-value { color: #1a1a1a; font-weight: 600; }
+
+.prob-row {
+display: flex;
+gap: 20px;
+flex-wrap: wrap;
+margin-top: 4px;
+}
+.prob-item {
+background: #f8fafd;
+border: 1px solid #e0e4ea;
+border-radius: 8px;
+padding: 10px 16px;
+text-align: center;
+min-width: 100px;
+flex: 1;
+}
+.prob-item .prob-label { font-size: 12px; color: #888; margin-bottom: 2px; }
+.prob-item .prob-value {
+font-size: 22px; font-weight: 700;
+}
+.prob-item.prob-warn {
+background: #fff5f5;
+border-color: #ff4444;
+}
+.prob-item.prob-warn .prob-value { color: #dc2626; }
+
+.prob-alert {
+margin-top: 8px;
+padding: 10px 14px;
+border-radius: 8px;
+font-size: 13px;
+font-weight: 700;
+display: flex;
+align-items: center;
+gap: 6px;
+}
+.prob-alert.danger {
+background: #fee2e2; color: #991b1b;
+border-left: 4px solid #dc2626;
+}
+.prob-alert.critical {
+background: #fff3cd; color: #856404;
+border-left: 4px solid #f59e0b;
+}
+.prob-alert.warning {
+background: #fff8e1; color: #8a6d14;
+border-left: 4px solid #ffc107;
+}
+
+.total-goal {
+background: #f0f7ff;
+border-radius: 8px;
+padding: 12px 16px;
+text-align: center;
+margin-top: 4px;
+}
+.total-goal .tg-label { font-size: 12px; color: #666; }
+.total-goal .tg-value { font-size: 28px; font-weight: 700; color: #1a3c6e; }
+
+.goal-bar-grid {
+display: flex;
+flex-wrap: wrap;
+gap: 6px;
+}
+.goal-bar-item {
+flex: 1; min-width: 64px;
+text-align: center;
+background: #f8fafd;
+border-radius: 8px;
+padding: 8px 6px;
+border: 1px solid #e0e4ea;
+transition: all .15s;
+}
+.goal-bar-item.goal-hot {
+background: #e8f5e9;
+border-color: #66bb6a;
+}
+.goal-bar-item .gb-label { font-size: 11px; color: #888; margin-bottom: 2px; }
+.goal-bar-item .gb-value { font-size: 16px; font-weight: 700; color: #333; }
+.goal-bar-item.goal-hot .gb-value { color: #1b5e20; }
+.goal-bar-item .gb-bar {
+height: 4px; background: #e0e4ea;
+border-radius: 2px; margin-top: 4px; overflow: hidden;
+}
+.goal-bar-item .gb-bar-fill {
+height: 100%; border-radius: 2px;
+background: linear-gradient(90deg, #4caf50, #81c784);
+transition: width .3s;
+}
+.goal-bar-item.goal-hot .gb-bar-fill { background: linear-gradient(90deg, #2e7d32, #43a047); }
+
+.goal-summary {
+margin-top: 10px;
+padding: 8px 14px;
+background: #f0f7ff;
+border-radius: 8px;
+font-size: 13px;
+color: #1a3c6e;
+font-weight: 600;
+}
+</style>
+</head>
+<body>
+
+<div class="top-header">
+<h1>⚽ 足球分析记录库</h1>
+<div class="meta" id="metaInfo">暂未加载数据</div>
+</div>
+
+<div class="layout">
+
+<aside class="sidebar">
+<div>
+<h3>📂 数据来源</h3>
+<div class="file-section" style="flex-direction:column; align-items:flex-start;">
+<label class="file-label" for="fileInput">
+📁 选择 data/ 文件夹
+</label>
+<input type="file" id="fileInput" webkitdirectory directory multiple accept=".json" />
+<div class="file-info" id="fileInfo">点击后选择整个 data/ 目录，自动读取所有 JSON</div>
+</div>
+</div>
+
+<div>
+<h3>🔍 数据筛选</h3>
+<div class="filter-group">
+<div>
+<label>搜索主队 / 客队</label>
+<input type="text" id="searchInput" placeholder="输入队名关键词…" />
+</div>
+<div>
+<label>联赛筛选</label>
+<div class="league-list" id="leagueList">
+<label style="color:#aaa;">（加载后显示）</label>
+</div>
+</div>
+</div>
+</div>
+
+<div>
+<h3>↕ 排序</h3>
+<div style="font-size:12px;color:#555;line-height:1.8;">
+点击表格中<br>
+<b>「时间」</b> 或 <b>「记录时间」</b><br>
+列标题切换升/降序
+</div>
+</div>
+
+<div>
+<button class="btn btn-success" id="exportBtn">📥 导出筛选结果 CSV</button>
+</div>
+
+<div>
+<h3>🎨 图例</h3>
+<div class="legend" style="flex-direction:column; gap:6px;">
+<div class="legend-item">
+<span class="legend-dot" style="background:#ff4444;"></span>
+<span>概率≥50% 或 赔付≥均值且概率≥50%</span>
+</div>
+<div class="legend-item">
+<span class="legend-dot" style="background:#ffeb3b; border:1px solid #ccc;"></span>
+<span>赔付≥均值但概率&lt;50%</span>
+</div>
+<div class="legend-item">
+<span class="legend-dot" style="background:#c8e6c9;"></span>
+<span>进球概率≥9.5%</span>
+</div>
+</div>
+</div>
+</aside>
+
+<main class="main">
+<div class="section-title-row">
+<div class="section-title">📋 比赛分析记录</div>
+<button class="btn-analyze" id="analyzeBtn" title="分析选中的比赛">🔍 分析选中</button>
+</div>
+<div class="result-info" id="resultInfo">
+<span>💡 请先通过左侧"选择 JSON 文件"按钮加载数据</span>
+</div>
+
+<div class="table-wrapper" id="tableWrapper">
+<div class="loading">
+<div>💡 请加载数据文件以开始分析</div>
+</div>
+</div>
+</main>
+</div>
+
+<div class="report-overlay" id="reportOverlay" style="display:none;">
+<div class="report-card" id="reportCard"></div>
+</div>
+
+<script>
+
+let allRecords = [];
+let filteredRecords = [];
+let allLeagues = [];
+let metaInfo = { generated_at: '', total_processed: 0, simulation_count: 0 };
+
+let sortCol = '记录时间';
+let sortAscending = false;
+
+function parseGoalProbs(probStr) {
+const keys = ['0球','1球','2球','3球','4球','5球','6球','7+球'];
+const result = {};
+keys.forEach(k => { result[k] = '0.0%'; });
+if (!probStr || probStr === '待模拟' || probStr === '无') return result;
+
+probStr.trim().split(/\s+/).forEach(part => {
+const idx = part.indexOf(':');
+if (idx === -1) return;
+const key = part.slice(0, idx);
+const val = part.slice(idx + 1);
+if (key === '7+') {
+result['7+球'] = val;
+} else if (/^\d+$/.test(key)) {
+result[key + '球'] = val;
+}
+});
+return result;
+}
+
+function parsePercent(str) {
+if (typeof str === 'number') return str;
+if (!str) return NaN;
+return parseFloat(String(str).replace('%', ''));
+}
+
+function parseNum(str) {
+if (typeof str === 'number') return str;
+if (!str) return NaN;
+return parseFloat(str);
+}
+
+function formatDate(dt) {
+if (!dt) return '';
+return dt.replace('T', ' ');
+}
+
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+const files = Array.from(e.target.files).filter(f => f.name.endsWith('.json'));
+if (!files.length) {
+document.getElementById('fileInfo').textContent = '未找到 JSON 文件，请检查所选目录';
+return;
+}
+
+document.getElementById('fileInfo').textContent = `已选 ${files.length} 个文件，正在解析…`;
+document.getElementById('tableWrapper').innerHTML = '<div class="loading"><div class="spinner"></div><span>正在加载数据…</span></div>';
+
+allRecords = [];
+let latestGeneratedAt = '';
+let totalProcessed = 0;
+let simCount = 0;
+
+files.sort((a, b) => a.name.localeCompare(b.name));
+
+const promises = files.map(f => new Promise((resolve) => {
+const reader = new FileReader();
+reader.onload = ev => {
+try {
+const data = JSON.parse(ev.target.result);
+resolve(data);
+} catch (err) {
+resolve(null);
+}
+};
+reader.readAsText(f, 'utf-8');
+}));
+
+const results = await Promise.all(promises);
+
+results.forEach(data => {
+if (!data || typeof data !== 'object') return;
+const records = data.records || [];
+records.forEach(rec => {
+const probStr = rec['轮次>10%'] || '';
+const probs = parseGoalProbs(probStr);
+Object.assign(rec, probs);
+});
+allRecords.push(...records);
+
+const genAt = data.generated_at || '';
+if (genAt > latestGeneratedAt) {
+latestGeneratedAt = genAt;
+totalProcessed = data.total_processed || 0;
+simCount = (data.simulation_params || {}).n_sims || 0;
+}
+});
+
+metaInfo = { generated_at: latestGeneratedAt, total_processed: totalProcessed, simulation_count: simCount };
+document.getElementById('fileInfo').textContent = `已加载 ${files.length} 文件，共 ${allRecords.length} 条记录`;
+
+const leagueSet = new Set();
+allRecords.forEach(r => { if (r['赛事']) leagueSet.add(r['赛事']); });
+allLeagues = Array.from(leagueSet).sort();
+renderLeagueFilter(allLeagues);
+updateMetaHeader();
+applyFiltersAndSort();
+});
+
+function renderLeagueFilter(leagues) {
+const container = document.getElementById('leagueList');
+if (!leagues.length) {
+container.innerHTML = '<label style="color:#aaa;">无联赛数据</label>';
+return;
+}
+container.innerHTML = leagues.map(lg =>
+`<label><input type="checkbox" class="league-cb" value="${escapeAttr(lg)}" checked /> ${escapeHtml(lg)}</label>`
+).join('');
+container.querySelectorAll('.league-cb').forEach(cb => {
+cb.addEventListener('change', applyFiltersAndSort);
+});
+}
+
+function applyFiltersAndSort() {
+if (!allRecords.length) return;
+
+const search = document.getElementById('searchInput').value.trim().toLowerCase();
+const selectedLeagues = new Set(
+Array.from(document.querySelectorAll('.league-cb:checked')).map(cb => cb.value)
+);
+const asc = sortAscending;
+
+filteredRecords = allRecords.filter(rec => {
+if (selectedLeagues.size > 0 && !selectedLeagues.has(rec['赛事'])) return false;
+if (search) {
+const home = (rec['主队'] || '').toLowerCase();
+const away = (rec['客队'] || '').toLowerCase();
+if (!home.includes(search) && !away.includes(search)) return false;
+}
+return true;
+});
+
+filteredRecords.sort((a, b) => {
+const va = a[sortCol] || '';
+const vb = b[sortCol] || '';
+if (va === vb) return 0;
+return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+});
+
+renderTable();
+}
+
+function updateMetaHeader() {
+const el = document.getElementById('metaInfo');
+const { generated_at, total_processed, simulation_count } = metaInfo;
+el.innerHTML = `📅 最新生成: ${generated_at || '未知'}<br>🎲 模拟次数: ${(simulation_count || 0).toLocaleString()}`;
+}
+
+const ID_COL = 'ID';
+const BASE_COLS = ['时间', ID_COL, '赛事','主队','客队','胜概率','平概率','负概率',
+'主进球','客进球','胜赔付','平赔付','负赔付','平均赔付'];
+const GOAL_COLS = ['0球','1球','2球','3球','4球','5球','6球','7+球'];
+const DISPLAY_COLS = [...BASE_COLS, ...GOAL_COLS, '记录时间'];
+
+function getRecordKey(col) {
+if (col === ID_COL) return 'match_id';
+return col;
+}
+
+function getCellClass(rec, col) {
+const probPayoutMap = {
+'胜赔付': '胜概率',
+'平赔付': '平概率',
+'负赔付': '负概率',
+};
+const probCols = new Set(['胜概率','平概率','负概率']);
+const goalCols = new Set(GOAL_COLS);
+
+if (probCols.has(col)) {
+const v = parsePercent(rec[col]);
+if (!isNaN(v) && v >= 50) return 'hl-red';
+return '';
+}
+
+if (col in probPayoutMap) {
+const payout = parseNum(rec[col]);
+const avg = parseNum(rec['平均赔付']);
+const probCol = probPayoutMap[col];
+const prob = parsePercent(rec[probCol]);
+if (!isNaN(payout) && !isNaN(avg) && payout >= avg) {
+if (!isNaN(prob) && prob >= 50) return 'hl-red';
+return 'hl-yellow';
+}
+return '';
+}
+
+if (goalCols.has(col)) {
+const v = parsePercent(rec[col]);
+if (!isNaN(v) && v >= 9.5) return 'hl-green';
+return '';
+}
+
+return '';
+}
+
+function renderTable() {
+const wrapper = document.getElementById('tableWrapper');
+const total = allRecords.length;
+const shown = filteredRecords.length;
+const SORTABLE_COLS = new Set(['时间', '记录时间']);
+
+document.getElementById('resultInfo').innerHTML =
+`<span>📊 当前显示 <b>${shown}</b> 条（共 ${total} 条）</span>` +
+`<span>📅 最新数据: ${metaInfo.generated_at || '未知'}</span>` +
+`<span>🎲 模拟次数: ${(metaInfo.simulation_count || 0).toLocaleString()}</span>`;
+
+if (!filteredRecords.length) {
+wrapper.innerHTML = '<div class="empty-tip">😕 没有符合条件的记录</div>';
+return;
+}
+
+const selectTh = `<th class="row-select-col" title="选择行">◎</th>`;
+const thHtml = selectTh + DISPLAY_COLS.map(col => {
+const isSortable = SORTABLE_COLS.has(col);
+let cls = '';
+if (isSortable) {
+if (col === sortCol) {
+cls = sortAscending ? 'sorted-asc th-sortable' : 'sorted-desc th-sortable';
+} else {
+cls = 'th-sortable';
+}
+}
+const sep = col === '0球' ? ' style="border-left:2px solid rgba(255,255,255,0.4);"' : '';
+const dataCol = isSortable ? ` data-col="${escapeAttr(col)}"` : '';
+return `<th class="${cls}"${dataCol}${sep}>${escapeHtml(col)}</th>`;
+}).join('');
+
+const rowsHtml = filteredRecords.map((rec, idx) => {
+const selectTd = `<td class="row-select-col"><input type="radio" name="rowSelect" value="${idx}" /></td>`;
+const cells = DISPLAY_COLS.map(col => {
+const fieldKey = getRecordKey(col);
+const val = rec[fieldKey] != null ? rec[fieldKey] : '';
+const cls = getCellClass(rec, col);
+const sep = col === '0球' ? ' goal-sep' : '';
+if (cls) {
+return `<td class="${cls}${sep}">${escapeHtml(String(val))}</td>`;
+}
+return `<td class="${sep}">${escapeHtml(String(val))}</td>`;
+}).join('');
+return `<tr data-idx="${idx}">${selectTd}${cells}</tr>`;
+}).join('');
+
+wrapper.innerHTML = `
+<table>
+<thead><tr>${thHtml}</tr></thead>
+<tbody>${rowsHtml}</tbody>
+</table>
+`;
+
+wrapper.querySelectorAll('tbody tr').forEach(tr => {
+tr.addEventListener('click', (e) => {
+if (e.target.tagName === 'INPUT') return;
+const radio = tr.querySelector('input[type="radio"]');
+if (radio) radio.checked = true;
+});
+});
+
+wrapper.querySelectorAll('thead th[data-col]').forEach(th => {
+th.addEventListener('click', () => {
+const col = th.dataset.col;
+if (col === sortCol) {
+sortAscending = !sortAscending;
+} else {
+sortCol = col;
+sortAscending = false;
+}
+applyFiltersAndSort();
+});
+});
+}
+
+document.getElementById('searchInput').addEventListener('input', applyFiltersAndSort);
+
+document.getElementById('exportBtn').addEventListener('click', () => {
+if (!filteredRecords.length) { alert('暂无数据可导出'); return; }
+const header = DISPLAY_COLS.join(',');
+const rows = filteredRecords.map(rec =>
+DISPLAY_COLS.map(col => {
+const fieldKey = getRecordKey(col);
+const v = rec[fieldKey] != null ? String(rec[fieldKey]) : '';
+return v.includes(',') || v.includes('"') || v.includes('\n')
+? `"${v.replace(/"/g, '""')}"` : v;
+}).join(',')
+);
+const csvContent = '\uFEFF' + [header, ...rows].join('\r\n');
+const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+const now = new Date();
+const ts = now.getFullYear().toString() +
+String(now.getMonth()+1).padStart(2,'0') +
+String(now.getDate()).padStart(2,'0') + '_' +
+String(now.getHours()).padStart(2,'0') +
+String(now.getMinutes()).padStart(2,'0') +
+String(now.getSeconds()).padStart(2,'0');
+a.href = url;
+a.download = `analysis_export_${ts}.csv`;
+a.click();
+URL.revokeObjectURL(url);
+});
+
+function escapeHtml(str) {
+return String(str)
+.replace(/&/g, '&amp;')
+.replace(/</g, '&lt;')
+.replace(/>/g, '&gt;')
+.replace(/"/g, '&quot;');
+}
+function escapeAttr(str) {
+return String(str).replace(/"/g, '&quot;');
+}
+
+const INDEX_URL = './docs/index.html';
+let indexWin = null;
+
+document.getElementById('analyzeBtn').addEventListener('click', () => {
+const radio = document.querySelector('input[name="rowSelect"]:checked');
+if (!radio) {
+alert('请先选中一条数据（点击行左侧的选择框）');
+return;
+}
+const idx = parseInt(radio.value, 10);
+const rec = filteredRecords[idx];
+if (!rec) { alert('找不到选中的数据'); return; }
+
+showReport(rec);
+
+fillIndexHtml(rec);
+});
+
+document.getElementById('reportOverlay').addEventListener('click', function(e) {
+if (e.target === this || e.target.classList.contains('report-close')) {
+this.style.display = 'none';
+}
+});
+
+function showReport(rec) {
+const winPct   = parsePercent(rec['胜概率']);
+const drawPct  = parsePercent(rec['平概率']);
+const losePct  = parsePercent(rec['负概率']);
+const homeGoal = parseNum(rec['主进球']);
+const awayGoal = parseNum(rec['客进球']);
+const totalGoal = (!isNaN(homeGoal) && !isNaN(awayGoal)) ? (homeGoal + awayGoal).toFixed(3) : '—';
+const winPay   = parseNum(rec['胜赔付']);
+const drawPay  = parseNum(rec['平赔付']);
+const losePay  = parseNum(rec['负赔付']);
+const avgPay   = parseNum(rec['平均赔付']);
+
+const probMap = { '胜': winPct, '平': drawPct, '负': losePct };
+const over50 = Object.entries(probMap).filter(([, v]) => !isNaN(v) && v >= 50);
+
+let html = '';
+html += `<div class="report-header"><h2>⚽ 分析报告</h2><button class="report-close">&times;</button></div>`;
+html += `<div class="report-body">`;
+
+html += `<div class="report-section">`;
+html += `<div class="report-section-title">📋 基本信息</div>`;
+html += `<div class="info-flex-row">`;
+html += item('时间', rec['时间']);
+html += item('ID',   rec['match_id'] || rec['ID']);
+html += item('赛事', rec['赛事']);
+html += `</div>`;
+html += `<div class="report-info-grid">`;
+html += item('主队', rec['主队']);
+html += item('客队', rec['客队']);
+html += `</div></div>`;
+
+html += `<div class="report-section">`;
+html += `<div class="report-section-title">📊 概率分析</div>`;
+html += `<div class="prob-row">`;
+['胜','平','负'].forEach(lbl => {
+const p = lbl === '胜' ? winPct : lbl === '平' ? drawPct : losePct;
+const warnCls = (!isNaN(p) && p >= 50) ? ' prob-warn' : '';
+html += `<div class="prob-item${warnCls}"><div class="prob-label">${lbl}概率</div><div class="prob-value">${isNaN(p) ? '—' : p + '%'}</div></div>`;
+});
+html += `</div>`;
+
+if (over50.length > 0) {
+const names = over50.map(([k]) => `${k}概率`);
+html += `<div class="prob-alert danger">⚠️ ${names.join('、')}超过 50%，占有明显优势</div>`;
+}
+html += `</div>`;
+
+html += `<div class="report-section">`;
+html += `<div class="report-section-title">⚡ 进球数据</div>`;
+html += `<div class="report-info-grid">`;
+html += item('主进球', homeGoal);
+html += item('客进球', awayGoal);
+html += `</div>`;
+html += `<div class="total-goal"><div class="tg-label">总进球</div><div class="tg-value">${totalGoal}</div></div>`;
+html += `</div>`;
+
+html += `<div class="report-section">`;
+html += `<div class="report-section-title">💰 赔付分析</div>`;
+html += `<div class="info-flex-row">`;
+html += item('胜赔付', winPay);
+html += item('平赔付', drawPay);
+html += item('负赔付', losePay);
+html += `</div>`;
+html += `<div class="info-single-row">`;
+html += item('平均赔付', avgPay);
+html += `</div>`;
+
+const payoutMap = { '胜': winPay, '平': drawPay, '负': losePay };
+let payoutAlerts = [];
+Object.entries(payoutMap).forEach(([k, v]) => {
+if (!isNaN(v) && !isNaN(avgPay) && v >= avgPay) {
+const isOver50 = !isNaN(probMap[k]) && probMap[k] >= 50;
+payoutAlerts.push({ label: `${k}赔付`, value: v, critical: isOver50 });
+}
+});
+payoutAlerts.forEach(a => {
+const cls = a.critical ? 'danger' : 'warning';
+const label = a.critical ? '🔥 特别警示！！' : '⚠️ 警示！';
+html += `<div class="prob-alert ${cls}">${label} ${a.label}：${a.value}</div>`;
+});
+html += `</div>`;
+
+html += `<div class="report-section">`;
+html += `<div class="report-section-title">🎯 总进球数分布</div>`;
+html += `<div class="goal-bar-grid">`;
+const goalLabels = ['0','1','2','3','4','5','6','7+'];
+const hotGoals = [];
+goalLabels.forEach(gl => {
+const fieldKey = gl === '7+' ? '7+球' : gl + '球';
+const p = parsePercent(rec[fieldKey]);
+const isHot = !isNaN(p) && p >= 9.5;
+if (isHot) hotGoals.push(gl);
+const hotCls = isHot ? ' goal-hot' : '';
+html += `<div class="goal-bar-item${hotCls}">`;
+html += `<div class="gb-label">${gl === '7+' ? '7+球' : gl + '球'}</div>`;
+html += `<div class="gb-value">${isNaN(p) ? '—' : p + '%'}</div>`;
+html += `<div class="gb-bar"><div class="gb-bar-fill" style="width:${Math.min(isNaN(p) ? 0 : p, 100)}%"></div></div>`;
+html += `</div>`;
+});
+html += `</div>`;
+
+if (hotGoals.length > 0) {
+html += `<div class="goal-summary">✅ 进球数概率超过 9.5% 的项目：进球数 ${hotGoals.join('、')}</div>`;
+}
+html += `</div>`;
+
+html += `</div>`;
+
+document.getElementById('reportCard').innerHTML = html;
+document.getElementById('reportOverlay').style.display = 'flex';
+}
+
+function item(label, val) {
+const display = (typeof val === 'number' && !isNaN(val)) ? String(val) : String(val ?? '—');
+return `<div class="info-item"><span class="info-label">${label}</span><span class="info-value">${escapeHtml(display)}</span></div>`;
+}
+
+function fillIndexHtml(rec) {
+const league = String(rec['赛事'] || '').trim();
+const matchId = String(rec['match_id'] || rec['ID'] || '').trim();
+
+if (!league && !matchId) return;
+
+if (!indexWin || indexWin.closed) {
+indexWin = window.open(INDEX_URL, 'fairplay_index');
+const payload = { type: 'FAIRPLAY_FILL', league, matchId };
+const check = setInterval(() => {
+try {
+if (!indexWin || indexWin.closed) { clearInterval(check); return; }
+const w = indexWin;
+if (w.document.readyState !== 'complete') return;
+const sel = w.document.getElementById('leagueSelect');
+if (!sel || sel.options.length <= 1) return;
+clearInterval(check);
+w.postMessage(payload, '*');
+} catch(e) {}
+}, 150);
+setTimeout(() => clearInterval(check), 12000);
+} else {
+indexWin.focus();
+indexWin.postMessage({ type: 'FAIRPLAY_FILL', league, matchId }, '*');
+}
+}
+
+window.addEventListener('message', function(e) {
+if (!e.data || e.data.type !== 'OU_REPORT') return;
+var results = e.data.results || [];
+var matchId = e.data.matchId || '';
+
+var ouHtml = buildOuReportHtml(results, matchId);
+
+var overlay = document.getElementById('reportOverlay');
+if (overlay.style.display === 'flex') {
+var oldOu = document.getElementById('ouReportSection');
+if (oldOu) oldOu.remove();
+var card = document.getElementById('reportCard');
+card.innerHTML += ouHtml;
+} else {
+
+openOuOnlyReport(ouHtml);
+}
+});
+
+function openOuOnlyReport(ouHtml) {
+var card = document.getElementById('reportCard');
+card.innerHTML = '<div class="report-header"><h2>⚽ 大小球盘口分析报告</h2><button class="report-close">&times;</button></div>' +
+'<div class="report-body">' + ouHtml + '</div>';
+document.getElementById('reportOverlay').style.display = 'flex';
+}
+
+function buildOuReportHtml(results, matchId) {
+if (!results || results.length === 0) return '';
+
+var summary = '<div class="report-section" id="ouReportSection">' +
+'<div class="report-section-title">🎯 大小球盘口分析</div>' +
+'<div class="goal-summary">📋 共 <b>' + results.length + '</b> 条时间戳数据 · 结论 · 注意备注</div>';
+
+for (var i = 0; i < results.length; i++) {
+var r = results[i];
+var evNum = Number(r.ev);
+var evStr = (evNum >= 0 ? '+' : '') + evNum.toFixed(3);
+
+var evCls = evNum >= 0 ? '#c62828' : '#2e7d32';
+var concBg    = r.concClass === 'over' ? '#fff3e0' : '#e8f5e9';
+var concColor = r.concClass === 'over' ? '#e65100' : '#1b5e20';
+
+var warningTag = '';
+if (r.warning === 'reversed') {
+warningTag = '<span style="font-weight:700;font-size:12px;padding:2px 8px;border-radius:4px;background:#fff3e0;color:#e65100;border:1px solid #ffcc80;">⚠️ 警示！反转</span>';
+} else if (r.warning === 'deviated') {
+warningTag = '<span style="font-weight:700;font-size:12px;padding:2px 8px;border-radius:4px;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;">⚠️ 警示！偏离</span>';
+}
+
+summary += '<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid #f0f2f5;font-size:13px;flex-wrap:wrap;">' +
+'<span style="background:#517ea8;color:#fff;border-radius:4px;padding:2px 7px;font-weight:700;font-size:12px;">' + r.folder + '</span>' +
+'<span style="background:#e8f4ff;color:#1a3c6e;border-radius:4px;padding:2px 7px;font-weight:700;font-size:12px;">盘口 ' + r.handicap + '</span>' +
+'<span style="font-weight:600;color:#2e7d32;">公平P: ' + r.fairP + '%</span>' +
+'<span style="font-weight:600;color:' + evCls + ';">EV ' + evStr + '</span>' +
+'<span style="font-weight:700;font-size:13px;padding:2px 8px;border-radius:4px;background:' + concBg + ';color:' + concColor + ';">' + r.conclusion + '</span>' +
+'<span style="font-weight:700;font-size:13px;padding:2px 8px;border-radius:4px;background:#f0f7ff;color:#1a3c6e;">' + (r.threshold || '') + '</span>' +
+warningTag +
+'</div>';
+}
+
+summary += '</div>';
+return summary;
+}
+
+</script>
+</body>
+</html>
