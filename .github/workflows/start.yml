@@ -1,0 +1,95 @@
+name: 综合备份 & 实时比分抓取
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # 每小时整点运行，可自行调整
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ---------- 检出代码 ----------
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      # ---------- 设置 Python ----------
+      - name: 设置 Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # ---------- 安装依赖 ----------
+      - name: 安装 Python 依赖
+        run: |
+          pip install requests playwright beautifulsoup4 lxml
+          playwright install chromium
+
+      # ---------- 设置时间戳（用于消息，可保留） ----------
+      - name: 设置时间戳
+        id: set-time
+        run: |
+          echo "TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+          echo "hour=$(date '+%H')" >> $GITHUB_OUTPUT
+
+      # ---------- 安装 AWS CLI（用于上传 R2） ----------
+      - name: 安装 AWS CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y awscli
+
+      # ---------- 生成数据（你的原有脚本，原封不动） ----------
+      - name: 生成 his_data.js
+        run: python parse_xml.py
+
+      - name: 抓取 livescore 数据
+        run: python fetch_livescore.py
+
+      - name: 解析实时比分
+        run: python scores_parser.py --input scores.json
+
+      - name: 抓取 results 数据
+        if: ${{ steps.set-time.outputs.hour == '16' }}
+        continue-on-error: true
+        run: python fetch_results.py
+
+      - name: 解析 results.json 生成 history.csv
+        if: ${{ steps.set-time.outputs.hour == '16' }}
+        continue-on-error: true
+        run: python results_parser.py --input results.json --history history.csv --output history.csv
+
+      - name: 增量更新统计CSV
+        run: python stats_python.py --update --order first --data scripts/docs/his_data.js --output scripts/docs/stats.csv
+
+      - name: 运行价值扫描
+        env:
+          HIS_DATA: scripts/docs/his_data.js
+          OUT_CSV: scripts/docs/value_matches.csv
+        run: python value_scan.py
+
+      # ========== 上传到 R2（按策略分别处理） ==========
+      - name: 上传生成文件到 Cloudflare R2
+        run: |
+          # ---- 1. 处理 HisData/ 历史数据（只增不减，保留全部历史） ----
+          mkdir -p upload_history/HisData
+          cp -r HisData/* upload_history/HisData/ 2>/dev/null || true
+          aws s3 sync upload_history/ s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/history/ \
+            --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+
+          # ---- 2. 处理其他文件（每次覆盖，只保留最新一份） ----
+          mkdir -p upload_latest
+          cp *.xml upload_latest/ 2>/dev/null || true
+          cp -r data/* upload_latest/data/ 2>/dev/null || true
+          cp scripts/docs/his_data.js scripts/docs/stats.csv upload_latest/ 2>/dev/null || true
+          cp scores_now.csv history.csv upload_latest/ 2>/dev/null || true
+          cp scripts/docs/value_matches.csv upload_latest/ 2>/dev/null || true
+
+          # 加上 --delete，确保远程只保留本地最新文件（旧文件自动清理）
+          aws s3 sync upload_latest/ s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/latest/ \
+            --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com \
+            --delete
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
