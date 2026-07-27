@@ -1,44 +1,135 @@
 name: 综合备份 & 实时比分抓取
 
 on:
-  schedule:
-    - cron: '0 * * * *'   # 每小时整点运行，可自行调整
-  workflow_dispatch:
+  workflow_dispatch:           # 保留手动触发
 
 jobs:
-  backup:
+  process-and-upload:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
-      # ---------- 检出代码 ----------
       - name: 检出仓库
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      # ---------- 设置 Python ----------
-      - name: 设置 Python 3.12
+      - name: 设置北京时间
+        id: set-time
+        run: |
+          sudo timedatectl set-timezone Asia/Shanghai
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          DATE=$(date +%Y%m%d)
+          HOUR=$(date +%H)
+          
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "date=$DATE" >> $GITHUB_OUTPUT
+          echo "hour=$HOUR" >> $GITHUB_OUTPUT
+          
+          echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
+          echo "DATE=$DATE" >> $GITHUB_ENV
+
+      - name: 创建文件夹结构
+        run: |
+          mkdir -p HisData docs data
+
+      - name: 删除2小时前的HisData文件夹
+        run: |
+          cd HisData
+          mapfile -t dirs < <(ls -d */ 2>/dev/null | sed 's#/$##' | sort)
+          total=${#dirs[@]}
+          keep=2
+          if [ "$total" -gt "$keep" ]; then
+            delete_count=$((total - keep))
+            for ((i=0; i<delete_count; i++)); do
+              echo "删除文件夹: ${dirs[i]}"
+              rm -rf "${dirs[i]}"
+            done
+            echo "已删除 $delete_count 个旧文件夹，保留最新 $keep 个"
+          else
+            echo "当前共 $total 个文件夹，未超过 $keep 个，无需删除"
+          fi
+
+      - name: 删除根目录旧XML文件
+        run: find . -maxdepth 1 -name "*.xml" -type f -delete
+
+      - name: 下载最新XML
+        run: |
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+          curl -L -A "$UA" -o windrawwinfirsthalf.xml "https://www.macauslot.com/content/data/soccer/xml/odds/windrawwinfirsthalf.xml"
+          curl -L -A "$UA" -o odds_config.xml "https://www.macauslot.com/content/data/soccer/xml/odds/odds_config.xml"
+          curl -L -A "$UA" -o windrawwin.xml "https://www.macauslot.com/content/data/soccer/xml/odds/windrawwin.xml"
+          curl -L -A "$UA" -o halffull.xml "https://www.macauslot.com/content/data/soccer/xml/odds/halffull.xml"
+          curl -L -A "$UA" -o winodds.xml "https://www.macauslot.com/content/data/soccer/xml/odds/winodds.xml"
+          curl -L -A "$UA" -o overunder.xml "https://www.macauslot.com/content/data/soccer/xml/odds/overunder.xml"
+          curl -L -A "$UA" -o numberofgoals.xml "https://www.macauslot.com/content/data/soccer/xml/odds/numberofgoals.xml"
+          curl -L -A "$UA" -o correctscore.xml "https://www.macauslot.com/content/data/soccer/xml/odds/correctscore.xml"
+
+      - name: 验证下载完整性
+        run: |
+          ALL_FILES=("windrawwinfirsthalf.xml" "odds_config.xml" "windrawwin.xml" "halffull.xml" "winodds.xml" "overunder.xml" "numberofgoals.xml" "correctscore.xml")
+          for f in "${ALL_FILES[@]}"; do
+            if [ ! -s "$f" ]; then
+              echo "❌ 文件 $f 不存在或为空，下载失败"
+              exit 1
+            fi
+          done
+          echo "✅ 所有8个XML文件下载成功"
+
+      - name: 复制XML到HisData时间戳文件夹
+        run: |
+          ARCHIVE_DIR="HisData/${{ env.TIMESTAMP }}"
+          mkdir -p "$ARCHIVE_DIR"
+          cp *.xml "$ARCHIVE_DIR/"
+          echo "✅ 已复制到 $ARCHIVE_DIR"
+
+      # ---------- Python 环境 ----------
+      - name: 安装 Python 3.12
         uses: actions/setup-python@v5
+        id: setup-python
         with:
           python-version: '3.12'
 
-      - name: 安装 Python 依赖
-        run: |
-          pip install requests playwright beautifulsoup4 lxml pandas numpy
-          playwright install chromium
+      - name: 缓存 Python 虚拟环境
+        id: venv-cache
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-py312-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            venv-${{ runner.os }}-py312-
 
-      # ---------- 设置时间戳（用于消息，可保留） ----------
-      - name: 设置时间戳
-        id: set-time
+      - name: 安装 Python 依赖（仅当缓存未命中）
+        if: steps.venv-cache.outputs.cache-hit != 'true'
         run: |
-          echo "TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
-          echo "hour=$(date '+%H')" >> $GITHUB_OUTPUT
+          python -m venv .venv
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: 安装 AWS CLI（通过 pip）
+      - name: 将虚拟环境加入 PATH
+        run: echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
+
+      # ---------- Playwright 浏览器缓存 ----------
+      - name: 缓存 Playwright 浏览器
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-py312-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-py312-
+
+      - name: 安装 Playwright（命中缓存则完全跳过）
         run: |
-          pip install awscli
-          # 确保 aws 命令在 PATH 中（pip 安装后通常会自动加入）
-          aws --version
+          if [[ "${{ steps.playwright-cache.outputs.cache-hit }}" == "true" ]]; then
+            echo "✅ 浏览器缓存命中，跳过下载和系统依赖安装（Ubuntu 已预装所需库）"
+          else
+            echo "❌ 缓存未命中，安装 Chromium 及系统依赖"
+            playwright install --with-deps chromium
+          fi
 
-      # ---------- 生成数据（你的原有脚本，原封不动） ----------
+      # ---------- 运行分析脚本 ----------
       - name: 生成 his_data.js
         run: python parse_xml.py
 
@@ -48,6 +139,7 @@ jobs:
       - name: 解析实时比分
         run: python scores_parser.py --input scores.json
 
+      # ---------- 完场赛果（仅北京时间 16 点那次运行） ----------
       - name: 抓取 results 数据
         if: ${{ steps.set-time.outputs.hour == '16' }}
         continue-on-error: true
@@ -58,36 +150,68 @@ jobs:
         continue-on-error: true
         run: python results_parser.py --input results.json --history history.csv --output history.csv
 
-      # - name: 增量更新统计CSV
-      #   run: python stats_python.py --update --order first --data scripts/docs/his_data.js --output scripts/docs/stats.csv
+      - name: 增量更新统计CSV
+        run: python stats_python.py --update --order first --data scripts/docs/his_data.js --output scripts/docs/stats.csv
 
-      # - name: 运行价值扫描
-      #   env:
-      #     HIS_DATA: scripts/docs/his_data.js
-      #     OUT_CSV: scripts/docs/value_matches.csv
-      #   run: python value_scan.py
+      - name: 运行价值扫描
+        env:
+          HIS_DATA: scripts/docs/his_data.js
+          OUT_CSV: scripts/docs/value_matches.csv
+        run: python value_scan.py
 
-      # ========== 上传到 R2（按策略分别处理） ==========
+      # ========== 上传到 Cloudflare R2（替换原来的 git commit） ==========
+      - name: 安装 AWS CLI（通过 pip）
+        run: |
+          pip install awscli
+          aws --version
+
       - name: 上传生成文件到 Cloudflare R2
         run: |
-          # ---- 1. 处理 HisData/ 历史数据（只增不减，保留全部历史） ----
-          mkdir -p upload_history/HisData
-          cp -r HisData/* upload_history/HisData/ 2>/dev/null || true
-          aws s3 sync upload_history/ s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/history/ \
-            --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          # 清理旧的上传目录
+          rm -rf upload_history upload_latest
 
-          # ---- 2. 处理其他文件（每次覆盖，只保留最新一份） ----
-          mkdir -p upload_latest
-          cp *.xml upload_latest/ 2>/dev/null || true
-          cp -r data/* upload_latest/data/ 2>/dev/null || true
-          cp scripts/docs/his_data.js scripts/docs/stats.csv upload_latest/ 2>/dev/null || true
-          cp scores_now.csv history.csv upload_latest/ 2>/dev/null || true
-          cp scripts/docs/value_matches.csv upload_latest/ 2>/dev/null || true
+          # ---- 1. 处理 HisData/ 历史数据 ----
+          if [ -d "HisData" ] && [ "$(ls -A HisData)" ]; then
+            mkdir -p upload_history/HisData
+            cp -r HisData/* upload_history/HisData/
+            echo "✅ HisData 已复制，包含以下子文件夹："
+            ls -la upload_history/HisData/
+          else
+            echo "⚠️ HisData 目录为空或不存在，跳过"
+          fi
 
-          # 加上 --delete，确保远程只保留本地最新文件（旧文件自动清理）
-          aws s3 sync upload_latest/ s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/latest/ \
-            --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com \
-            --delete
+          # ---- 2. 处理最新文件 ----
+          mkdir -p upload_latest/data upload_latest/scripts/docs
+
+          # 复制根目录下的所有 XML 文件
+          cp *.xml upload_latest/ 2>/dev/null || echo "⚠️ 没有 XML 文件"
+
+          # 复制 data 目录（如果存在且有内容）
+          [ -d "data" ] && [ "$(ls -A data)" ] && cp -r data/* upload_latest/data/ || echo "data 为空"
+
+          # 复制 scripts/docs 下的生成文件
+          [ -f "scripts/docs/his_data.js" ] && cp scripts/docs/his_data.js upload_latest/scripts/docs/
+          [ -f "scripts/docs/stats.csv" ] && cp scripts/docs/stats.csv upload_latest/scripts/docs/
+          [ -f "scripts/docs/value_matches.csv" ] && cp scripts/docs/value_matches.csv upload_latest/scripts/docs/
+
+          # 复制根目录下的 CSV 文件
+          [ -f "scores_now.csv" ] && cp scores_now.csv upload_latest/
+          [ -f "history.csv" ] && cp history.csv upload_latest/
+
+          # ---- 3. 同步 HisData 到 R2（只增不减，保留全部历史） ----
+          if [ -d "upload_history" ] && [ "$(ls -A upload_history)" ]; then
+            aws s3 sync upload_history/ s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/history/ \
+              --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+            echo "✅ HisData 已同步到 history/"
+          fi
+
+          # ---- 4. 同步最新文件到 R2（每次覆盖，只保留最新一份） ----
+          if [ -d "upload_latest" ] && [ "$(ls -A upload_latest)" ]; then
+            aws s3 sync upload_latest/ s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/latest/ \
+              --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com \
+              --delete
+            echo "✅ 最新文件已同步到 latest/"
+          fi
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
