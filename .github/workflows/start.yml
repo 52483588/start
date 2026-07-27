@@ -20,10 +20,9 @@ jobs:
         with:
           python-version: '3.12'
 
-      # ---------- 安装依赖 ----------
       - name: 安装 Python 依赖
         run: |
-          pip install requests playwright beautifulsoup4 lxml
+          pip install requests playwright beautifulsoup4 lxml pandas numpy
           playwright install chromium
 
       # ---------- 设置时间戳（用于消息，可保留） ----------
