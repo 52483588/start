@@ -33,11 +33,11 @@ jobs:
           echo "TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
           echo "hour=$(date '+%H')" >> $GITHUB_OUTPUT
 
-      # ---------- 安装 AWS CLI（用于上传 R2） ----------
-      - name: 安装 AWS CLI
+      - name: 安装 AWS CLI（通过 pip）
         run: |
-          sudo apt-get update
-          sudo apt-get install -y awscli
+          pip install awscli
+          # 确保 aws 命令在 PATH 中（pip 安装后通常会自动加入）
+          aws --version
 
       # ---------- 生成数据（你的原有脚本，原封不动） ----------
       - name: 生成 his_data.js
