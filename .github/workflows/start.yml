@@ -58,14 +58,14 @@ jobs:
         continue-on-error: true
         run: python results_parser.py --input results.json --history history.csv --output history.csv
 
-      - name: 增量更新统计CSV
-        run: python stats_python.py --update --order first --data scripts/docs/his_data.js --output scripts/docs/stats.csv
+      # - name: 增量更新统计CSV
+      #   run: python stats_python.py --update --order first --data scripts/docs/his_data.js --output scripts/docs/stats.csv
 
-      - name: 运行价值扫描
-        env:
-          HIS_DATA: scripts/docs/his_data.js
-          OUT_CSV: scripts/docs/value_matches.csv
-        run: python value_scan.py
+      # - name: 运行价值扫描
+      #   env:
+      #     HIS_DATA: scripts/docs/his_data.js
+      #     OUT_CSV: scripts/docs/value_matches.csv
+      #   run: python value_scan.py
 
       # ========== 上传到 R2（按策略分别处理） ==========
       - name: 上传生成文件到 Cloudflare R2
