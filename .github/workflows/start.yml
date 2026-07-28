@@ -158,8 +158,8 @@ jobs:
           cp *.xml upload_latest/ 2>/dev/null || echo "⚠️ 没有 XML 文件"
 
           # ---------- 恢复 history.csv（确保每次上传都存在） ----------
-          - name: 恢复 history.csv（如果本地没有）
-            run: |
+      - name: 恢复 history.csv（如果本地没有）
+        run: |
           if [ ! -f "history.csv" ]; then
             echo "⚠️ 本地没有 history.csv，尝试从 R2 恢复..."
             aws s3 cp s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/latest/history.csv . \
