@@ -157,6 +157,17 @@ jobs:
           # 复制根目录下的所有 XML 文件
           cp *.xml upload_latest/ 2>/dev/null || echo "⚠️ 没有 XML 文件"
 
+          # ---------- 恢复 history.csv（确保每次上传都存在） ----------
+          - name: 恢复 history.csv（如果本地没有）
+            run: |
+          if [ ! -f "history.csv" ]; then
+            echo "⚠️ 本地没有 history.csv，尝试从 R2 恢复..."
+            aws s3 cp s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/latest/history.csv . \
+              --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com || echo "⚠️ R2 上也没有，等下次16点生成"
+          else
+            echo "✅ history.csv 已存在"
+          fi         
+
           # 复制根目录下的 CSV 文件
           [ -f "scores_now.csv" ] && cp scores_now.csv upload_latest/
           [ -f "history.csv" ] && cp history.csv upload_latest/
