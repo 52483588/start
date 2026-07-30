@@ -30,12 +30,9 @@ jobs:
 
       - name: 创建文件夹结构
         run: |
-          mkdir -p HisData docs data
-
-      - name: 删除根目录旧XML文件
-        run: find . -maxdepth 1 -name "*.xml" -type f -delete
-
-      - name: 下载最新XML
+          mkdir -p HisData 
+          
+       - name: 下载最新XML
         run: |
           UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
           curl -L -A "$UA" -o windrawwinfirsthalf.xml "https://www.macauslot.com/content/data/soccer/xml/odds/windrawwinfirsthalf.xml"
@@ -65,26 +62,6 @@ jobs:
           mkdir -p "$ARCHIVE_DIR"
           cp *.xml "$ARCHIVE_DIR/"
           echo "✅ 已复制到 $ARCHIVE_DIR"
-
-      # ---------- 新增：清理 HisData，只保留最新72个文件夹 ----------
-      - name: 清理 HisData 保留最新72个文件夹
-        run: |
-          cd HisData || exit 0
-          # 列出所有子目录（只目录），按名称排序（时间戳格式天然字典序）
-          dirs=( $(ls -d */ 2>/dev/null | sort) )
-          total=${#dirs[@]}
-          max_keep=72
-          if [ $total -gt $max_keep ]; then
-            remove_count=$((total - max_keep))
-            echo "当前有 $total 个文件夹，需要删除最早的 $remove_count 个"
-            for i in "${dirs[@]:0:$remove_count}"; do
-              echo "删除旧文件夹: $i"
-              rm -rf "$i"
-            done
-            echo "已清理，剩余 $(ls -d */ | wc -l) 个文件夹"
-          else
-            echo "当前有 $total 个文件夹，未超限，无需清理"
-          fi
 
       # ---------- Python 环境 ----------
       - name: 安装 Python 3.12
@@ -123,7 +100,7 @@ jobs:
           restore-keys: |
             playwright-${{ runner.os }}-py312-
 
-      - name: 安装 Playwright（缓存命中时只验证，不安装系统依赖）
+      - name: 安装 Playwright（缓存命中时只验证）
         run: |
           if [[ "${{ steps.playwright-cache.outputs.cache-hit }}" == "true" ]]; then
             echo "✅ 浏览器缓存命中，仅验证浏览器存在"
@@ -133,37 +110,33 @@ jobs:
             playwright install --with-deps chromium
           fi
 
-      # ---------- 运行分析脚本 ----------
+      # ---------- 运行分析脚本（每小时执行） ----------
       - name: 抓取 livescore 数据
         run: python fetch_livescore.py
 
       - name: 解析实时比分
         run: python scores_parser.py --input scores.json
 
-      # ---------- 完场赛果（仅北京时间 16 点那次运行） ----------
-      - name: 抓取 results 数据
-        if: ${{ steps.set-time.outputs.hour == '16' }}
+      - name: 抓取 results 数据（每小时）
         continue-on-error: true
         run: python fetch_results.py
 
-      - name: 解析 results.json 生成 history.csv
-        if: ${{ steps.set-time.outputs.hour == '16' }}
+      - name: 解析 results.json 生成/更新 history.csv（每小时）
         continue-on-error: true
         run: python results_parser.py --input results.json --history history.csv --output history.csv
 
       # ---------- 安装 AWS CLI ----------
-      - name: 安装 AWS CLI（通过 pip）
+      - name: 安装 AWS CLI
         run: |
           pip install awscli
           aws --version
 
-      # ========== 上传到 Cloudflare R2（分离 history.csv 处理） ==========
+      # ========== 上传到 Cloudflare R2 ==========
       - name: 上传生成文件到 Cloudflare R2
         run: |
-          # 清理旧的上传目录
-          rm -rf upload_history upload_latest upload_sync
+          rm -rf upload_history upload_sync
 
-          # ---- 1. 处理 HisData/ 历史数据（已清理过，只保留最新72个） ----
+          # ---- 1. 准备 HisData 目录（用于远程同步） ----
           if [ -d "HisData" ] && [ "$(ls -A HisData)" ]; then
             mkdir -p upload_history/HisData
             cp -r HisData/* upload_history/HisData/
@@ -172,40 +145,55 @@ jobs:
             echo "⚠️ HisData 为空，跳过"
           fi
 
-          # ---- 2. 准备「其他最新文件」（不含 history.csv）用于覆盖式同步 ----
+          # ---- 2. 准备最新文件目录（包含所有需要覆盖的最新文件） ----
           mkdir -p upload_sync
-          # 复制所有 XML
           cp *.xml upload_sync/ 2>/dev/null || echo "⚠️ 无 XML 文件"
-          # 复制 scores_now.csv
           [ -f "scores_now.csv" ] && cp scores_now.csv upload_sync/
-          # 如果有其他需要覆盖的文件，也一并复制到这里
+          [ -f "history.csv" ] && cp history.csv upload_sync/   # 现在每小时都有
 
-          # ---- 3. 同步 HisData 到 R2 history/（保留历史） ----
+          # ---- 3. 同步 HisData 到 R2（保留历史，并清理远程多余的旧文件夹） ----
           if [ -d "upload_history" ] && [ "$(ls -A upload_history)" ]; then
+            # 先上传新文件
             aws s3 sync upload_history/ s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/history/ \
               --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-            echo "✅ HisData 已同步到 history/"
+
+            # 清理远程 HisData 文件夹，只保留最新 72 个
+            echo "正在检查 R2 上的历史文件夹数量..."
+            # 获取所有 HisData 子文件夹（按名称升序）
+            folders=$(aws s3 ls s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/history/HisData/ \
+              --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com \
+              | grep "/" \
+              | awk '{print $2}' \
+              | sort)
+
+            total=$(echo "$folders" | wc -l)
+            max_keep=25
+
+            if [ $total -gt $max_keep ]; then
+              remove_count=$((total - max_keep))
+              echo "远程有 $total 个文件夹，需要删除最早的 $remove_count 个"
+              echo "$folders" | head -n $remove_count | while read -r folder; do
+                echo "删除旧文件夹: HisData/$folder"
+                aws s3 rm s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/history/HisData/$folder \
+                  --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com \
+                  --recursive
+              done
+              echo "✅ 已清理，远程剩余最新 $max_keep 个文件夹"
+            else
+              echo "远程有 $total 个文件夹，未超限，无需清理"
+            fi
           fi
 
-          # ---- 4. 同步「其他最新文件」到 latest/（含 --delete，但不会删除 history.csv） ----
+          # ---- 4. 同步最新文件到 latest/（覆盖，且本地包含 history.csv） ----
           if [ "$(ls -A upload_sync)" ]; then
             aws s3 sync upload_sync/ s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/latest/ \
               --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com \
-              --delete \
-              --exclude "history.csv"   # 关键：排除 history.csv，避免删除远程已有的
-            echo "✅ 最新文件（不含 history.csv）已同步"
+              --delete
+            echo "✅ 最新文件已同步（包含 history.csv）"
           else
             echo "⚠️ 没有可同步的最新文件"
           fi
 
-          # ---- 5. 单独上传 history.csv（只覆盖，不删除） ----
-          if [ -f "history.csv" ]; then
-            aws s3 cp history.csv s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/latest/history.csv \
-              --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-            echo "✅ history.csv 已单独上传（覆盖）"
-          else
-            echo "ℹ️ 本地无 history.csv，保留远程已有版本"
-          fi
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
