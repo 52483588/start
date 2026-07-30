@@ -2,9 +2,7 @@ name: 综合备份 & 实时比分抓取
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '57 * * * *'
-
+  
 jobs:
   process-and-upload:
     runs-on: ubuntu-latest
@@ -31,10 +29,7 @@ jobs:
 
       - name: 创建文件夹结构
         run: |
-          mkdir -p HisData docs data
-
-      - name: 删除根目录旧XML文件
-        run: find . -maxdepth 1 -name "*.xml" -type f -delete
+          mkdir -p HisData
 
       - name: 下载最新XML
         run: |
@@ -159,7 +154,7 @@ jobs:
               | sort)
 
             total=$(echo "$folders" | wc -l)
-            max_keep=72
+            max_keep=25
 
             if [ $total -gt $max_keep ]; then
               remove_count=$((total - max_keep))
