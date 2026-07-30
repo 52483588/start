@@ -154,7 +154,7 @@ jobs:
               | sort)
 
             total=$(echo "$folders" | wc -l)
-            max_keep=25
+            max_keep=72
 
             if [ $total -gt $max_keep ]; then
               remove_count=$((total - max_keep))
