@@ -2,19 +2,20 @@ name: 综合备份 & 实时比分抓取
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '57 * * * *'
 
 jobs:
   process-and-upload:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    
+
     steps:
       - name: 检出仓库
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # ========== 1. 设置北京时间（无 sudo，全环境兼容） ==========
       - name: 设置北京时间
         id: set-time
         run: |
@@ -30,9 +31,12 @@ jobs:
 
       - name: 创建文件夹结构
         run: |
-          mkdir -p HisData 
-          
-       - name: 下载最新XML
+          mkdir -p HisData docs data
+
+      - name: 删除根目录旧XML文件
+        run: find . -maxdepth 1 -name "*.xml" -type f -delete
+
+      - name: 下载最新XML
         run: |
           UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
           curl -L -A "$UA" -o windrawwinfirsthalf.xml "https://www.macauslot.com/content/data/soccer/xml/odds/windrawwinfirsthalf.xml"
@@ -55,7 +59,6 @@ jobs:
           done
           echo "✅ 所有8个XML文件下载成功"
 
-      # ---------- 创建本次时间戳文件夹并复制 XML ----------
       - name: 复制XML到HisData时间戳文件夹
         run: |
           ARCHIVE_DIR="HisData/${{ env.TIMESTAMP }}"
@@ -63,7 +66,6 @@ jobs:
           cp *.xml "$ARCHIVE_DIR/"
           echo "✅ 已复制到 $ARCHIVE_DIR"
 
-      # ---------- Python 环境 ----------
       - name: 安装 Python 3.12
         uses: actions/setup-python@v5
         id: setup-python
@@ -90,7 +92,6 @@ jobs:
       - name: 将虚拟环境加入 PATH
         run: echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
 
-      # ---------- Playwright 浏览器缓存 ----------
       - name: 缓存 Playwright 浏览器
         id: playwright-cache
         uses: actions/cache@v4
@@ -100,7 +101,7 @@ jobs:
           restore-keys: |
             playwright-${{ runner.os }}-py312-
 
-      - name: 安装 Playwright（缓存命中时只验证）
+      - name: 安装 Playwright
         run: |
           if [[ "${{ steps.playwright-cache.outputs.cache-hit }}" == "true" ]]; then
             echo "✅ 浏览器缓存命中，仅验证浏览器存在"
@@ -110,33 +111,29 @@ jobs:
             playwright install --with-deps chromium
           fi
 
-      # ---------- 运行分析脚本（每小时执行） ----------
       - name: 抓取 livescore 数据
         run: python fetch_livescore.py
 
       - name: 解析实时比分
         run: python scores_parser.py --input scores.json
 
-      - name: 抓取 results 数据（每小时）
+      - name: 抓取 results 数据
         continue-on-error: true
         run: python fetch_results.py
 
-      - name: 解析 results.json 生成/更新 history.csv（每小时）
+      - name: 解析 results.json 生成 history.csv
         continue-on-error: true
         run: python results_parser.py --input results.json --history history.csv --output history.csv
 
-      # ---------- 安装 AWS CLI ----------
       - name: 安装 AWS CLI
         run: |
           pip install awscli
           aws --version
 
-      # ========== 上传到 Cloudflare R2 ==========
       - name: 上传生成文件到 Cloudflare R2
         run: |
           rm -rf upload_history upload_sync
 
-          # ---- 1. 准备 HisData 目录（用于远程同步） ----
           if [ -d "HisData" ] && [ "$(ls -A HisData)" ]; then
             mkdir -p upload_history/HisData
             cp -r HisData/* upload_history/HisData/
@@ -145,21 +142,16 @@ jobs:
             echo "⚠️ HisData 为空，跳过"
           fi
 
-          # ---- 2. 准备最新文件目录（包含所有需要覆盖的最新文件） ----
           mkdir -p upload_sync
           cp *.xml upload_sync/ 2>/dev/null || echo "⚠️ 无 XML 文件"
           [ -f "scores_now.csv" ] && cp scores_now.csv upload_sync/
-          [ -f "history.csv" ] && cp history.csv upload_sync/   # 现在每小时都有
+          [ -f "history.csv" ] && cp history.csv upload_sync/
 
-          # ---- 3. 同步 HisData 到 R2（保留历史，并清理远程多余的旧文件夹） ----
           if [ -d "upload_history" ] && [ "$(ls -A upload_history)" ]; then
-            # 先上传新文件
             aws s3 sync upload_history/ s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/history/ \
               --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
 
-            # 清理远程 HisData 文件夹，只保留最新 72 个
             echo "正在检查 R2 上的历史文件夹数量..."
-            # 获取所有 HisData 子文件夹（按名称升序）
             folders=$(aws s3 ls s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/history/HisData/ \
               --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com \
               | grep "/" \
@@ -167,7 +159,7 @@ jobs:
               | sort)
 
             total=$(echo "$folders" | wc -l)
-            max_keep=25
+            max_keep=72
 
             if [ $total -gt $max_keep ]; then
               remove_count=$((total - max_keep))
@@ -184,7 +176,6 @@ jobs:
             fi
           fi
 
-          # ---- 4. 同步最新文件到 latest/（覆盖，且本地包含 history.csv） ----
           if [ "$(ls -A upload_sync)" ]; then
             aws s3 sync upload_sync/ s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/latest/ \
               --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com \
@@ -193,7 +184,6 @@ jobs:
           else
             echo "⚠️ 没有可同步的最新文件"
           fi
-
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
