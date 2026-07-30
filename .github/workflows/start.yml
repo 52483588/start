@@ -191,7 +191,7 @@ jobs:
           if [ "$(ls -A upload_sync)" ]; then
             aws s3 sync upload_sync/ s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/latest/ \
               --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com \
-              --delete
+              --delete \
               --exclude "history.csv"   # 关键：排除 history.csv，避免删除远程已有的
             echo "✅ 最新文件（不含 history.csv）已同步"
           else
