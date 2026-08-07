@@ -25,12 +25,12 @@ def main():
         print("🔄 正在加载历史赛果页面，等待数据...")
         page.goto("https://www.macauslot.com/sc/soccer/matchResult.html", wait_until="networkidle")
         
-        for _ in range(20):
+        for _ in range(40):
             if api_response:
                 break
             page.wait_for_timeout(500)
         else:
-            print("❌ 未能在 10 秒内捕获到 API 响应")
+            print("❌ 未能在 20 秒内捕获到 API 响应")
             browser.close()
             sys.exit(1)
 

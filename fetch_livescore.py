@@ -32,13 +32,13 @@ def main():
         print("🔄 正在加载实时比分页面，等待数据...")
         page.goto("https://www.macauslot.com/sc/soccer/livescore.html", wait_until="networkidle")
         
-        # 最多等待 10 秒捕获响应
-        for _ in range(20):
+        # 最多等待 20 秒捕获响应
+        for _ in range(40):
             if api_response:
                 break
             page.wait_for_timeout(500)
         else:
-            print("❌ 未能在 10 秒内捕获到 API 响应，可能页面结构已变化。")
+            print("❌ 未能在 20 秒内捕获到 API 响应，可能页面结构已变化。")
             browser.close()
             sys.exit(1)
 
