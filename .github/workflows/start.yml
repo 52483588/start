@@ -6,7 +6,7 @@ on:
 jobs:
   process-and-upload:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
 
     steps:
       - name: 检出仓库
@@ -31,35 +31,82 @@ jobs:
         run: |
           mkdir -p HisData
 
-      - name: 下载最新XML
+      - name: 下载最新XML（含失败重试与完整性校验）
+        id: download
         run: |
           UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          curl -L -A "$UA" -o windrawwinfirsthalf.xml "https://www.macauslot.com/content/data/soccer/xml/odds/windrawwinfirsthalf.xml"
-          curl -L -A "$UA" -o odds_config.xml "https://www.macauslot.com/content/data/soccer/xml/odds/odds_config.xml"
-          curl -L -A "$UA" -o windrawwin.xml "https://www.macauslot.com/content/data/soccer/xml/odds/windrawwin.xml"
-          curl -L -A "$UA" -o halffull.xml "https://www.macauslot.com/content/data/soccer/xml/odds/halffull.xml"
-          curl -L -A "$UA" -o winodds.xml "https://www.macauslot.com/content/data/soccer/xml/odds/winodds.xml"
-          curl -L -A "$UA" -o overunder.xml "https://www.macauslot.com/content/data/soccer/xml/odds/overunder.xml"
-          curl -L -A "$UA" -o numberofgoals.xml "https://www.macauslot.com/content/data/soccer/xml/odds/numberofgoals.xml"
-          curl -L -A "$UA" -o correctscore.xml "https://www.macauslot.com/content/data/soccer/xml/odds/correctscore.xml"
+          MIN_SIZE=300
+          ITEMS=(
+            "windrawwinfirsthalf.xml|https://www.macauslot.com/content/data/soccer/xml/odds/windrawwinfirsthalf.xml"
+            "odds_config.xml|https://www.macauslot.com/content/data/soccer/xml/odds/odds_config.xml"
+            "windrawwin.xml|https://www.macauslot.com/content/data/soccer/xml/odds/windrawwin.xml"
+            "halffull.xml|https://www.macauslot.com/content/data/soccer/xml/odds/halffull.xml"
+            "winodds.xml|https://www.macauslot.com/content/data/soccer/xml/odds/winodds.xml"
+            "overunder.xml|https://www.macauslot.com/content/data/soccer/xml/odds/overunder.xml"
+            "numberofgoals.xml|https://www.macauslot.com/content/data/soccer/xml/odds/numberofgoals.xml"
+            "correctscore.xml|https://www.macauslot.com/content/data/soccer/xml/odds/correctscore.xml"
+          )
 
-      - name: 验证下载完整性
-        run: |
-          ALL_FILES=("windrawwinfirsthalf.xml" "odds_config.xml" "windrawwin.xml" "halffull.xml" "winodds.xml" "overunder.xml" "numberofgoals.xml" "correctscore.xml")
-          for f in "${ALL_FILES[@]}"; do
-            if [ ! -s "$f" ]; then
-              echo "❌ 文件 $f 不存在或为空，下载失败"
-              exit 1
+          download_all() {
+            for item in "${ITEMS[@]}"; do
+              f="${item%%|*}"
+              u="${item##*|}"
+              curl -L -A "$UA" -o "$f" "$u"
+            done
+          }
+
+          # 整体重试：最多 3 次，每次间隔 30 秒
+          MAX_ATTEMPTS=3
+          ATTEMPT=1
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "🔄 XML 下载尝试 $ATTEMPT/$MAX_ATTEMPTS"
+            download_all
+            BAD=0
+            for item in "${ITEMS[@]}"; do
+              f="${item%%|*}"
+              SIZE=$(wc -c < "$f" 2>/dev/null || echo 0)
+              if [ "$SIZE" -lt $MIN_SIZE ]; then
+                echo "⚠️ $f 仅 $SIZE 字节（<$MIN_SIZE），下载异常"
+                BAD=1
+              fi
+            done
+            if [ $BAD -eq 0 ]; then
+              echo "✅ 全部文件均 >= $MIN_SIZE 字节，下载完整"
+              break
+            fi
+            ATTEMPT=$((ATTEMPT+1))
+            if [ $ATTEMPT -le $MAX_ATTEMPTS ]; then
+              echo "⏳ 等待 30 秒后重试..."
+              sleep 30
             fi
           done
-          echo "✅ 所有8个XML文件下载成功"
 
-      - name: 复制XML到HisData时间戳文件夹
+          # 仅保留有效文件并生成清单；异常（<300B）文件直接删除，不参与上传
+          : > valid_xmls.txt
+          for item in "${ITEMS[@]}"; do
+            f="${item%%|*}"
+            SIZE=$(wc -c < "$f" 2>/dev/null || echo 0)
+            if [ "$SIZE" -ge $MIN_SIZE ]; then
+              echo "$f" >> valid_xmls.txt
+            else
+              echo "🗑️ 排除异常文件 $f（$SIZE 字节）"
+              rm -f "$f"
+            fi
+          done
+          echo "📋 有效XML清单：" $(tr '\n' ' ' < valid_xmls.txt)
+
+      - name: 归档XML到HisData时间戳文件夹
         run: |
-          ARCHIVE_DIR="HisData/${{ env.TIMESTAMP }}"
-          mkdir -p "$ARCHIVE_DIR"
-          cp *.xml "$ARCHIVE_DIR/"
-          echo "✅ 已复制到 $ARCHIVE_DIR"
+          if [ -s valid_xmls.txt ]; then
+            ARCHIVE_DIR="HisData/${{ env.TIMESTAMP }}"
+            mkdir -p "$ARCHIVE_DIR"
+            while read -r f; do
+              [ -f "$f" ] && cp "$f" "$ARCHIVE_DIR/"
+            done < valid_xmls.txt
+            echo "✅ 已归档 $(wc -l < valid_xmls.txt) 个有效XML到 $ARCHIVE_DIR"
+          else
+            echo "⚠️ 无有效XML，跳过HisData归档"
+          fi
 
       - name: 安装 Python 3.12
         uses: actions/setup-python@v5
@@ -106,18 +153,56 @@ jobs:
             playwright install --with-deps chromium
           fi
 
-      - name: 抓取 livescore 数据
-        run: python fetch_livescore.py
+      - name: 抓取 livescore 数据（失败自动重试）
+        id: livescore
+        run: |
+          MAX_ATTEMPTS=2
+          ATTEMPT=1
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "🔄 livescore 尝试 $ATTEMPT/$MAX_ATTEMPTS"
+            if python fetch_livescore.py; then
+              echo "livescore_ok=true" >> $GITHUB_OUTPUT
+              break
+            fi
+            ATTEMPT=$((ATTEMPT+1))
+            if [ $ATTEMPT -le $MAX_ATTEMPTS ]; then
+              echo "⏳ 等待 30 秒后重试..."
+              sleep 30
+            fi
+          done
+          if [ "$ATTEMPT" -gt "$MAX_ATTEMPTS" ]; then
+            echo "⚠️ livescore 连续 $MAX_ATTEMPTS 次失败，跳过比分解析，继续上传"
+            echo "livescore_ok=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: 解析实时比分
+        if: steps.livescore.outputs.livescore_ok == 'true'
         run: python scores_parser.py --input scores.json
 
-      - name: 抓取 results 数据
-        continue-on-error: true
-        run: python fetch_results.py
+      - name: 抓取 results 数据（失败自动重试）
+        id: results
+        run: |
+          MAX_ATTEMPTS=2
+          ATTEMPT=1
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "🔄 results 尝试 $ATTEMPT/$MAX_ATTEMPTS"
+            if python fetch_results.py; then
+              echo "results_ok=true" >> $GITHUB_OUTPUT
+              break
+            fi
+            ATTEMPT=$((ATTEMPT+1))
+            if [ $ATTEMPT -le $MAX_ATTEMPTS ]; then
+              echo "⏳ 等待 30 秒后重试..."
+              sleep 30
+            fi
+          done
+          if [ "$ATTEMPT" -gt "$MAX_ATTEMPTS" ]; then
+            echo "⚠️ results 连续 $MAX_ATTEMPTS 次失败，跳过赛果解析，继续上传"
+            echo "results_ok=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: 解析 results.json 生成 history.csv
-        continue-on-error: true
+        if: steps.results.outputs.results_ok == 'true'
         run: python results_parser.py --input results.json --history history.csv --output history.csv
 
       - name: 安装 AWS CLI
@@ -138,7 +223,14 @@ jobs:
           fi
 
           mkdir -p upload_sync
-          cp *.xml upload_sync/ 2>/dev/null || echo "⚠️ 无 XML 文件"
+          if [ -s valid_xmls.txt ]; then
+            while read -r f; do
+              [ -f "$f" ] && cp "$f" upload_sync/
+            done < valid_xmls.txt
+          else
+            echo "⚠️ 无有效XML清单，尝试复制全部 .xml"
+            cp *.xml upload_sync/ 2>/dev/null || echo "⚠️ 无 XML 文件"
+          fi
           [ -f "scores_now.csv" ] && cp scores_now.csv upload_sync/
           [ -f "history.csv" ] && cp history.csv upload_sync/
 
@@ -175,7 +267,7 @@ jobs:
             aws s3 sync upload_sync/ s3://${{ secrets.R2_BUCKET_NAME }}/${{ github.repository }}/latest/ \
               --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com \
               --delete
-            echo "✅ 最新文件已同步（包含 history.csv）"
+            echo "✅ 最新文件已同步"
           else
             echo "⚠️ 没有可同步的最新文件"
           fi
