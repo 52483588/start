@@ -2,7 +2,7 @@ name: 综合备份 & 实时比分抓取
 
 on:
   workflow_dispatch:
-  
+
 jobs:
   process-and-upload:
     runs-on: ubuntu-latest
@@ -119,9 +119,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-py312-${{ hashFiles('**/requirements.txt') }}
+          # 关键修复：用 setup-python 解析出的精确版本号（如 3.12.14）参与 key，
+          # 避免 Python 补丁版本漂移后恢复出“解释器软链接已断”的旧 venv。
+          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
-            venv-${{ runner.os }}-py312-
+            venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-
 
       - name: 安装 Python 依赖（仅当缓存未命中）
         if: steps.venv-cache.outputs.cache-hit != 'true'
