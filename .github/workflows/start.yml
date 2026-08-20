@@ -56,7 +56,7 @@ jobs:
           }
 
           # 整体重试：最多 3 次，每次间隔 30 秒
-          MAX_ATTEMPTS=3
+          MAX_ATTEMPTS=4
           ATTEMPT=1
           while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
             echo "🔄 XML 下载尝试 $ATTEMPT/$MAX_ATTEMPTS"
