@@ -55,7 +55,7 @@ jobs:
             done
           }
 
-          # 整体重试：最多 3 次，每次间隔 30 秒
+          # 整体重试：最多 4 次，每次间隔 30 秒
           MAX_ATTEMPTS=4
           ATTEMPT=1
           while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
@@ -158,7 +158,7 @@ jobs:
       - name: 抓取 livescore 数据（失败自动重试）
         id: livescore
         run: |
-          MAX_ATTEMPTS=2
+          MAX_ATTEMPTS=3
           ATTEMPT=1
           while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
             echo "🔄 livescore 尝试 $ATTEMPT/$MAX_ATTEMPTS"
@@ -184,7 +184,7 @@ jobs:
       - name: 抓取 results 数据（失败自动重试）
         id: results
         run: |
-          MAX_ATTEMPTS=2
+          MAX_ATTEMPTS=3
           ATTEMPT=1
           while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
             echo "🔄 results 尝试 $ATTEMPT/$MAX_ATTEMPTS"
