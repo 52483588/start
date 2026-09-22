@@ -2,15 +2,16 @@ name: 综合备份 & 实时比分抓取
 
 on:
   workflow_dispatch:
-
+  
 jobs:
   process-and-upload:
-    runs-on: ubuntu-latest
+    # 锁定 24.04：避免 2026-10-19 起 ubuntu-latest 自动迁移到 Ubuntu 26，导致 Python/Playwright/awscli 等依赖意外变化
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
       - name: 检出仓库
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -55,8 +56,8 @@ jobs:
             done
           }
 
-          # 整体重试：最多 4 次，每次间隔 30 秒
-          MAX_ATTEMPTS=4
+          # 整体重试：最多 3 次，每次间隔 30 秒
+          MAX_ATTEMPTS=3
           ATTEMPT=1
           while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
             echo "🔄 XML 下载尝试 $ATTEMPT/$MAX_ATTEMPTS"
@@ -109,21 +110,19 @@ jobs:
           fi
 
       - name: 安装 Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         id: setup-python
         with:
           python-version: '3.12'
 
       - name: 缓存 Python 虚拟环境
         id: venv-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6.1.0
         with:
           path: .venv
-          # 关键修复：用 setup-python 解析出的精确版本号（如 3.12.14）参与 key，
-          # 避免 Python 补丁版本漂移后恢复出“解释器软链接已断”的旧 venv。
-          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/requirements.txt') }}
+          key: venv-${{ runner.os }}-py312-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
-            venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-
+            venv-${{ runner.os }}-py312-
 
       - name: 安装 Python 依赖（仅当缓存未命中）
         if: steps.venv-cache.outputs.cache-hit != 'true'
@@ -138,7 +137,7 @@ jobs:
 
       - name: 缓存 Playwright 浏览器
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-py312-${{ hashFiles('**/requirements.txt') }}
@@ -158,7 +157,7 @@ jobs:
       - name: 抓取 livescore 数据（失败自动重试）
         id: livescore
         run: |
-          MAX_ATTEMPTS=3
+          MAX_ATTEMPTS=2
           ATTEMPT=1
           while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
             echo "🔄 livescore 尝试 $ATTEMPT/$MAX_ATTEMPTS"
@@ -184,7 +183,7 @@ jobs:
       - name: 抓取 results 数据（失败自动重试）
         id: results
         run: |
-          MAX_ATTEMPTS=3
+          MAX_ATTEMPTS=2
           ATTEMPT=1
           while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
             echo "🔄 results 尝试 $ATTEMPT/$MAX_ATTEMPTS"
