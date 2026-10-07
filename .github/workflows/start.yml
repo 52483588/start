@@ -107,19 +107,13 @@ jobs:
             echo "⚠️ 无有效XML，跳过HisData归档"
           fi
 
+      # ✅ 只保留这一处 setup-python；用 cache:'pip' 缓存 pip wheel（不缓存 venv，避免 shebang 失效）
       - name: 安装 Python 3.12
         uses: actions/setup-python@v7.0.0
         id: setup-python
         with:
           python-version: '3.12'
-
-      # ⬇️ 缓存 key 已加入精确 Python 版本（修复本次报错的关键）
-      - name: 安装 Python 3.12
-        uses: actions/setup-python@v7.0.0
-        id: setup-python
-        with:
-          python-version: '3.12'
-          cache: 'pip'          # 由 setup-python 自动缓存 pip wheel，安全可复用
+          cache: 'pip'
 
       - name: 创建虚拟环境并安装依赖
         run: |
@@ -131,7 +125,6 @@ jobs:
       - name: 将虚拟环境加入 PATH
         run: echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
 
-      # ⬇️ Playwright 缓存 key 同样加入精确 Python 版本
       - name: 缓存 Playwright 浏览器
         id: playwright-cache
         uses: actions/cache@v6.1.0
@@ -141,7 +134,6 @@ jobs:
           restore-keys: |
             playwright-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-
 
-      # ⬇️ 用 python -m playwright，避免 venv shebang 失效
       - name: 安装 Playwright
         run: |
           if [[ "${{ steps.playwright-cache.outputs.cache-hit }}" == "true" ]]; then
@@ -204,7 +196,6 @@ jobs:
         if: steps.results.outputs.results_ok == 'true'
         run: python results_parser.py --input results.json --history history.csv --output history.csv
 
-      # ⬇️ 已把 awscli 放进 requirements.txt，这里只做版本确认
       - name: 验证 AWS CLI
         run: aws --version
 
