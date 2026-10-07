@@ -47,5 +47,5 @@ tzdata==2026.1
 urllib3==2.6.3
 watchdog==6.0.0
 yarg==0.1.10
-playwright==1.63.0
-
+playwright==1.60.0
+awscli
