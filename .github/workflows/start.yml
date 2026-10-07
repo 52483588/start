@@ -2,12 +2,12 @@ name: 综合备份 & 实时比分抓取
 
 on:
   workflow_dispatch:
-  
+
 jobs:
   process-and-upload:
-    # 锁定 24.04：避免 2026-10-19 起 ubuntu-latest 自动迁移到 Ubuntu 26，导致 Python/Playwright/awscli 等依赖意外变化
+    # 锁定 24.04：避免 2026-10-19 起 ubuntu-latest 自动迁移到 Ubuntu 26
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - name: 检出仓库
@@ -56,7 +56,6 @@ jobs:
             done
           }
 
-          # 整体重试：最多 3 次，每次间隔 30 秒
           MAX_ATTEMPTS=3
           ATTEMPT=1
           while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
@@ -82,7 +81,6 @@ jobs:
             fi
           done
 
-          # 仅保留有效文件并生成清单；异常（<300B）文件直接删除，不参与上传
           : > valid_xmls.txt
           for item in "${ITEMS[@]}"; do
             f="${item%%|*}"
@@ -115,17 +113,15 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: 缓存 Python 虚拟环境
-        id: venv-cache
-        uses: actions/cache@v6.1.0
+      # ⬇️ 缓存 key 已加入精确 Python 版本（修复本次报错的关键）
+      - name: 安装 Python 3.12
+        uses: actions/setup-python@v7.0.0
+        id: setup-python
         with:
-          path: .venv
-          key: venv-${{ runner.os }}-py312-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            venv-${{ runner.os }}-py312-
+          python-version: '3.12'
+          cache: 'pip'          # 由 setup-python 自动缓存 pip wheel，安全可复用
 
-      - name: 安装 Python 依赖（仅当缓存未命中）
-        if: steps.venv-cache.outputs.cache-hit != 'true'
+      - name: 创建虚拟环境并安装依赖
         run: |
           python -m venv .venv
           source .venv/bin/activate
@@ -135,23 +131,25 @@ jobs:
       - name: 将虚拟环境加入 PATH
         run: echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
 
+      # ⬇️ Playwright 缓存 key 同样加入精确 Python 版本
       - name: 缓存 Playwright 浏览器
         id: playwright-cache
         uses: actions/cache@v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-py312-${{ hashFiles('**/requirements.txt') }}
+          key: playwright-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
-            playwright-${{ runner.os }}-py312-
+            playwright-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-
 
+      # ⬇️ 用 python -m playwright，避免 venv shebang 失效
       - name: 安装 Playwright
         run: |
           if [[ "${{ steps.playwright-cache.outputs.cache-hit }}" == "true" ]]; then
             echo "✅ 浏览器缓存命中，仅验证浏览器存在"
-            playwright install chromium
+            python -m playwright install chromium
           else
             echo "❌ 缓存未命中，安装 Chromium 及系统依赖"
-            playwright install --with-deps chromium
+            python -m playwright install --with-deps chromium
           fi
 
       - name: 抓取 livescore 数据（失败自动重试）
@@ -206,10 +204,9 @@ jobs:
         if: steps.results.outputs.results_ok == 'true'
         run: python results_parser.py --input results.json --history history.csv --output history.csv
 
-      - name: 安装 AWS CLI
-        run: |
-          pip install awscli
-          aws --version
+      # ⬇️ 已把 awscli 放进 requirements.txt，这里只做版本确认
+      - name: 验证 AWS CLI
+        run: aws --version
 
       - name: 上传生成文件到 Cloudflare R2
         run: |
