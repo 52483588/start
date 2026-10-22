@@ -1,0 +1,108 @@
+name: Fetch football-data.co.uk
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'history=一次性历史(多年); weekly=当前赛季周更'
+        required: false
+        default: 'history'
+      league:
+        description: '联赛代码逗号分隔（留空用默认列表）'
+        required: false
+        default: 'E0,E1,D1,D2,I1,I2,SP1,SP2,F1,F2,P1,SW1,J1,J2,K1,K2'
+      seasons:
+        description: '覆盖默认 seasons（留空则按 mode 自动）'
+        required: false
+        default: ''
+      keep_artifact_days:
+        description: 'artifact 保留天数'
+        required: false
+        default: '90'
+  # 每周日 06:00 UTC 自动跑 weekly（取消注释即启用）
+  schedule:
+    - cron: '0 6 * * 0'
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute config (mode / seasons / output)
+        id: cfg
+        run: |
+          set -u
+          MODE="${{ github.event.inputs.mode }}"
+          if [ "${{ github.event_name }}" = "schedule" ]; then MODE="weekly"; fi
+          if [ -z "$MODE" ]; then MODE="history"; fi
+
+          if [ -n "${{ github.event.inputs.seasons }}" ]; then
+            SEASONS="${{ github.event.inputs.seasons }}"
+          elif [ "$MODE" = "weekly" ]; then
+            # 当前赛季跨年：8 月前属于上一赛季
+            YR=$(date +%y)
+            M=$(date +%-m)
+            if [ "$M" -lt 8 ]; then
+              CUR=$(printf "%02d%02d" $((10#$YR - 1)) $YR)
+              PREV=$(printf "%02d%02d" $((10#$YR - 2)) $((10#$YR - 1)))
+            else
+              NY=$((10#$YR + 1))
+              CUR="${YR}${NY}"
+              PREV=$(printf "%02d%02d" $((10#$YR - 1)) $YR)
+            fi
+            SEASONS="${PREV},${CUR}"
+          else
+            SEASONS="1516,1617,1718,1819,1920,2021,2122,2223,2324,2425,2526"
+          fi
+
+          if [ "$MODE" = "weekly" ]; then
+            OUT="data/current.csv"
+            ART="football-data-current"
+          else
+            OUT="data/history.csv"
+            ART="football-data-history"
+          fi
+
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "seasons=$SEASONS" >> "$GITHUB_OUTPUT"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
+          echo "art=$ART" >> "$GITHUB_OUTPUT"
+          echo "::notice::mode=$MODE seasons=$SEASONS out=$OUT"
+
+      - name: Run fetcher
+        env:
+          LEAGUE: ${{ github.event.inputs.league || 'E0,E1,D1,D2,I1,I2,SP1,SP2,F1,F2,P1,SW1,J1,J2,K1,K2' }}
+          SEASONS: ${{ steps.cfg.outputs.seasons }}
+          OUT: ${{ steps.cfg.outputs.out }}
+        run: |
+          set -u
+          echo "Python: $(python3 --version 2>&1)"
+          echo "工作目录: $(pwd)"
+          if [ ! -f fetch_data.py ]; then
+            echo "::error::仓库根目录找不到 fetch_data.py！请把它和本 workflow 一起提交（与 .github/ 同级）。"
+            ls -la
+            exit 1
+          fi
+          mkdir -p data
+          python3 -u fetch_data.py footballdata \
+            --league "$LEAGUE" \
+            --seasons "$SEASONS" \
+            --out "$OUT"
+
+      - name: List output
+        if: always()
+        run: ls -la data/ && echo "--- 首行 ---" && head -1 data/*.csv 2>/dev/null || true
+
+      - name: Upload CSV as artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.cfg.outputs.art }}
+          path: ${{ steps.cfg.outputs.out }}
+          retention-days: ${{ fromJSON(github.event.inputs.keep_artifact_days || '90') }}
