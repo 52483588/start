@@ -1,65 +1,84 @@
-name: Fetch football-data.co.uk
+name: Fetch Football-Data (Discover + History)
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'history=一次性历史(多年); weekly=当前赛季周更'
-        required: false
+        description: 'Mode (history/weekly)'
+        required: true
         default: 'history'
-      league:
-        description: '联赛代码逗号分隔（留空用默认列表）'
+      leagues:
+        description: 'Comma-separated league codes (leave empty for default)'
         required: false
-        default: 'E0,E1,D1,D2,I1,I2,SP1,SP2,F1,F2,P1,SW1,J1,J2,K1,K2'
-      seasons:
-        description: '覆盖默认 seasons（留空则按 mode 自动）'
-        required: false
-        default: ''
-      keep_artifact_days:
-        description: 'artifact 保留天数'
-        required: false
-        default: '90'
-  # 每周日 06:00 UTC 自动跑 weekly（取消注释即启用）
   schedule:
-    - cron: '0 6 * * 0'
-
-permissions:
-  contents: read
+    - cron: '0 6 * * SUN'  # 每周日 06:00 UTC → 每周六 14:00 北京时间
 
 jobs:
-  fetch:
+  discover:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Compute config (mode / seasons / output)
-        id: cfg
+      - uses: actions/checkout@v4
+      - name: Run discover_leagues script
         run: |
-          set -u
-          MODE="${{ github.event.inputs.mode }}"
-          if [ "${{ github.event_name }}" = "schedule" ]; then MODE="weekly"; fi
-          if [ -z "$MODE" ]; then MODE="history"; fi
+          python3 - <<'EOF'
+          import urllib.request, ssl, json, sys, time
+          ctx = ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE
+          CODES = {
+              "E0","E1","E2","E3","SC0","L1","L2","L3","LD","UT","IU",
+              "D1","D2","D3","SP1","SP2","I1","I2","I3","F1","F2","F3",
+              "P1","P2","NL1","NL2","B1","B2","B3","GR1","GR2","GR3",
+              "T1","T2","T3","S1","S2","DK1","DK2","NO1","NO2","SW1","SW2",
+              "SC1","SC2","SC3","SC4","SC5","SCL","SL","KR1","KR2","KR3",
+              "JA1","JA2","JA3","JA4","JA5","AU1","AU2","NZ1","CN1","CN2",
+              "KR1","KR2","US1","US2","US3","CA1","CA2","CA3","MX1","MX2",
+              "AR1","AR2","AR3","BR1","BR2","BR3","CI1","CI2","CI3","CO1","CO2",
+              "PE1","PE2","UY1","PY1","EC1","VE1","BO1","IL1","IL2","SA1","SA2",
+              "KE1","NG1","NG2","UG1","TZ1","TZ2","TZ3","RW1","ET1","MA1","DZ1","TN1",
+              "RU1","RU2","UA1","UA2","FI1","FI2","CZ1","CZ2","PL1","PL2","HU1","HU2",
+              "AT1","AT2","SK1","SI1","HR1","BA1","RS1","BG1","BG2","LT1","LV1","EE1",
+              "BY1","AM1","GE1","AZ1"
+          }
+          SEASON = "2526"
+          ok = []
+          for code in CODES:
+              url = f"https://www.football-data.co.uk/mmz4281/{SEASON}/{code}.csv"
+              try:
+                  req = urllib.request.Request(url, headers={"User-Agent":"Mozilla/5.0"})
+                  with urllib.request.urlopen(req, timeout=10, context=ctx) as r:
+                      if r.status == 200:
+                          raw = r.read(500)
+                          if b"HomeTeam" in raw or b"Date" in raw:
+                              ok.append(code)
+                              print(f"OK  {code}")
+              except Exception as ex:
+                  # skip
+                  pass
+          print(json.dumps(ok, ensure_ascii=False, indent=2))
+          EOF
+        id: discover
 
-          if [ -n "${{ github.event.inputs.seasons }}" ]; then
-            SEASONS="${{ github.event.inputs.seasons }}"
-          elif [ "$MODE" = "weekly" ]; then
-            # 当前赛季跨年：8 月前属于上一赛季
-            YR=$(date +%y)
-            M=$(date +%-m)
-            if [ "$M" -lt 8 ]; then
-              CUR=$(printf "%02d%02d" $((10#$YR - 1)) $YR)
-              PREV=$(printf "%02d%02d" $((10#$YR - 2)) $((10#$YR - 1)))
-            else
-              NY=$((10#$YR + 1))
-              CUR="${YR}${NY}"
-              PREV=$(printf "%02d%02d" $((10#$YR - 1)) $YR)
-            fi
-            SEASONS="${PREV},${CUR}"
-          else
-            SEASONS="1516,1617,1718,1819,1920,2021,2122,2223,2324,2425,2526"
-          fi
+  fetch:
+    needs: discover
+    runs-on: ubuntu-24.04
+    if: always() && (success() || contains(needs.discover.outputs.result, 'OK'))
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clear proxy env
+        run: |
+          rm -rf ~/.wgetrc
+          echo "PROXY=" >> ~/.wgetrc
+
+      - name: Prepare data directory
+        run: mkdir -p data
+
+      - name: Fetch football-data (history)
+        if: github.event.inputs.mode == 'history'
+        run: |
+          python3 fetch_data.py footballdata \
+            --league $g 'leagues' in github.event.inputs && github.event.inputs.leagues || 'E0,E1,D1,D2,SP1,SP2,I1,I2,F1,F2,P1,SW1,JA1,KR1,SC0,AT1,DK1,NO1,NL1,B1,P2,GR1,IL1,PL1,FI1,CZ1,UA1,RU1,TR1,SI1,HR1,BA1,RS1,BG1,BY1,AM1,GE1,AZ1' $ \
+            --seasons 1516,1617,1718,1819,1920,2021,2122,2223,2324,2425,2526 \
+            --out data/fd_history.csv
+
 
           if [ "$MODE" = "weekly" ]; then
             OUT="data/current.csv"
