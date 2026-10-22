@@ -1,0 +1,64 @@
+name: Fetch football-data.co.uk
+
+on:
+  workflow_dispatch:
+    inputs:
+      league:
+        description: '联赛代码（逗号分隔多个，如 E0 或 E0,E1,SP1）'
+        required: false
+        default: 'E0'
+      seasons:
+        description: '赛季（格式 YY+Y1Y2，逗号分隔，如 2425,2526,2627）'
+        required: false
+        default: '2425,2526,2627'
+      keep_artifact_days:
+        description: 'artifact 保留天数'
+        required: false
+        default: '90'
+  # 定时抓取（取消注释启用，UTC 时间：每周日 00:00）
+  # schedule:
+  #   - cron: '0 0 * * 0'
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Clear proxy env (runner 直连，避免任何残留代理变量干扰)
+        run: |
+          unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy || true
+
+      - name: Run fetcher
+        env:
+          LEAGUE: ${{ github.event.inputs.league || 'E0' }}
+          SEASONS: ${{ github.event.inputs.seasons || '2425,2526,2627' }}
+        run: |
+          mkdir -p data
+          python fetch_data.py footballdata \
+            --league "$LEAGUE" \
+            --seasons "$SEASONS" \
+            --out "data/fd_${GITHUB_RUN_ID}.csv"
+
+      - name: List output
+        if: always()
+        run: ls -la data/ && echo "--- 首行 ---" && head -1 data/*.csv 2>/dev/null || true
+
+      - name: Upload CSV as artifact
+        if: success()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: football-data-${{ github.run_id }}
+          path: data/*.csv
+          retention-days: ${{ fromJSON(github.event.inputs.keep_artifact_days || '90') }}
