@@ -20,8 +20,8 @@ on:
         required: false
         default: '90'
   # 每周日 06:00 UTC 自动跑 weekly（取消注释即启用）
-  schedule:
-    - cron: '0 6 * * 0'
+  # schedule:
+  #  - cron: '0 6 * * 0'
 
 permissions:
   contents: read
