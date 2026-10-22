@@ -1,4 +1,4 @@
-name: Fetch football-data.co.uk
+name: Fetch football-data.co.uk a
 
 on:
   workflow_dispatch:
