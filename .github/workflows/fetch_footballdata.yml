@@ -10,7 +10,7 @@ on:
       league:
         description: '联赛代码逗号分隔（留空用默认列表）'
         required: false
-        default: 'E0,E1,D1,D2,I1,I2,SP1,SP2,F1,F2,P1,SC0,NL1,B1,GR1,T1,DK1,NO1,BR1,CI1,JA1,JA2,KR1,KR2'
+        default: 'E0,E1,D1,D2,I1,I2,SP1,SP2,F1,F2,P1,SC0,NL1,B1,GR1,T1,DK1,NO1,BR1,CI1'
       seasons:
         description: '覆盖默认 seasons（留空则按 mode 自动）'
         required: false
@@ -58,7 +58,7 @@ jobs:
             fi
             SEASONS="${PREV},${CUR}"
           else
-            SEASONS="1516,1617,1718,1819,1920,2021,2122,2223,2324,2425,2526"
+            SEASONS="2425,2526"
           fi
 
 
