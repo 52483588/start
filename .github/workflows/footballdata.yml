@@ -44,12 +44,46 @@ jobs:
           echo "--- 根目录生成的 CSV ---"
           ls -1 *.CSV 2>/dev/null || echo "没有任何 CSV 生成"
 
+      - name: Normalize columns (union schema)
+        run: |
+          set -eu
+          python3 - <<'PY'
+          import csv, glob
+          files = sorted(glob.glob("*.CSV"))
+          if not files:
+              print("无 CSV，跳过归一化"); raise SystemExit(0)
+          preferred = ["E0.CSV", "E1.CSV", "SC0.CSV"]
+          order = [f for f in preferred if f in files] + [f for f in files if f not in preferred]
+          union, seen = [], set()
+          def add(cols):
+              for c in cols:
+                  if c not in seen:
+                      seen.add(c); union.append(c)
+          for f in order:
+              with open(f, newline='', encoding='utf-8') as fh:
+                  try:
+                      head = next(csv.reader(fh))
+                  except StopIteration:
+                      continue
+                  add(head)
+          print("并集列(%d): %s" % (len(union), ",".join(union)))
+          for f in files:
+              with open(f, newline='', encoding='utf-8') as fh:
+                  rows = list(csv.DictReader(fh))
+              with open(f, 'w', newline='', encoding='utf-8') as fh:
+                  w = csv.DictWriter(fh, fieldnames=union, extrasaction='ignore')
+                  w.writeheader()
+                  for row in rows:
+                      w.writerow({k: row.get(k, '') or '' for k in union})
+              print("归一化 %s -> %d 列" % (f, len(union)))
+          PY
+
       - name: List output
         if: always()
         run: |
           ls -la *.CSV 2>/dev/null || echo "（无 CSV 文件）"
-          echo "--- 首行 ---"
-          for f in *.CSV; do [ -f "$f" ] && { echo "## $f"; head -1 "$f"; }; done
+          echo "--- 首行 + 列数 ---"
+          for f in *.CSV; do [ -f "$f" ] && { echo "## $f ($(head -1 "$f" | awk -F, '{print NF}') 列)"; head -1 "$f"; }; done
 
       - name: 验证 AWS CLI
         run: aws --version
@@ -74,5 +108,6 @@ jobs:
           echo "准备上传以下文件到 R2:"
           ls -1 upload_fd/
           aws s3 sync upload_fd/ s3://${{ secrets.R2_BUCKET_NAME }}/52483588/start/football-data/ \
-            --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          echo "::notice::已同步到 R2 前缀 52483588/start/football-data/"
+            --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com \
+            --delete
+          echo "::notice::已同步到 R2 前缀 52483588/start/football-data/（--delete 严格镜像，仅保留最新）"
