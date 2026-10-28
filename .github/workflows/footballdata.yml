@@ -1,23 +1,12 @@
-name: Fetch football-data.co.uk a
+name: Fetch football-data.co.uk
 
 on:
   workflow_dispatch:
     inputs:
       league:
-        description: '联赛代码（逗号分隔多个，如 E0 或 E0,E1,SP1）'
+        description: '联赛代码逗号分隔（固定采集 2627 赛季；留空用默认21个）'
         required: false
-        default: 'E0'
-      seasons:
-        description: '赛季（格式 YY+Y1Y2，逗号分隔，如 2425,2526,2627）'
-        required: false
-        default: '2425,2526,2627'
-      keep_artifact_days:
-        description: 'artifact 保留天数'
-        required: false
-        default: '90'
-  # 定时抓取（取消注释启用，UTC 时间：每周日 00:00）
-  # schedule:
-  #   - cron: '0 0 * * 0'
+        default: 'E0,E1,D1,D2,I1,I2,SP1,SP2,F1,F2,P1,SC0,NL1,B1,GR1,T1,DK1,NO1,BR1,CI1'
 
 permissions:
   contents: read
@@ -25,40 +14,65 @@ permissions:
 jobs:
   fetch:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run fetcher
+      - name: Fetch per-league CSVs (season 2627)
         env:
-          LEAGUE: ${{ github.event.inputs.league || 'E0' }}
-          SEASONS: ${{ github.event.inputs.seasons || '2425,2526,2627' }}
+          LEAGUE: ${{ github.event.inputs.league || 'E0,E1,D1,D2,I1,I2,SP1,SP2,F1,F2,P1,SC0,NL1,B1,GR1,T1,DK1,NO1,BR1,CI1' }}
+          SEASONS: '2627'
         run: |
           set -u
           echo "Python: $(python3 --version 2>&1)"
-          echo "工作目录: $(pwd)"
           if [ ! -f fetch_data.py ]; then
             echo "::error::仓库根目录找不到 fetch_data.py！请把它和本 workflow 一起提交（与 .github/ 同级）。"
-            echo "当前目录内容："
             ls -la
             exit 1
           fi
-          mkdir -p data
-          python3 -u fetch_data.py footballdata \
-            --league "$LEAGUE" \
-            --seasons "$SEASONS" \
-            --out "data/fd_${GITHUB_RUN_ID}.csv"
+          IFS=',' read -ra LS <<< "$LEAGUE"
+          for L in "${LS[@]}"; do
+            L="$(echo -n "$L" | tr -d ' ')"
+            [ -z "$L" ] && continue
+            echo "=== 采集 $L ($SEASONS) ==="
+            python3 -u fetch_data.py footballdata \
+              --league "$L" \
+              --seasons "$SEASONS" \
+              --out "${L}.CSV" || echo "::warning::$L 采集失败，跳过"
+          done
+          echo "--- 根目录生成的 CSV ---"
+          ls -1 *.CSV 2>/dev/null || echo "没有任何 CSV 生成"
 
       - name: List output
         if: always()
-        run: ls -la data/ && echo "--- 首行 ---" && head -1 data/*.csv 2>/dev/null || true
+        run: |
+          ls -la *.CSV 2>/dev/null || echo "（无 CSV 文件）"
+          echo "--- 首行 ---"
+          for f in *.CSV; do [ -f "$f" ] && { echo "## $f"; head -1 "$f"; }; done
 
-      - name: Upload CSV as artifact
-        if: success()
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: football-data-${{ github.run_id }}
-          path: data/*.csv
-          retention-days: ${{ fromJSON(github.event.inputs.keep_artifact_days || '90') }}
+      - name: 验证 AWS CLI
+        run: aws --version
+
+      - name: 上传到 Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -u
+          # 把根目录生成的联赛 CSV 汇集到上传目录，避免直接 sync 仓库根目录误带 .git / 脚本等文件
+          rm -rf upload_fd
+          mkdir -p upload_fd
+          shopt -s nullglob
+          for f in *.CSV; do cp "$f" upload_fd/; done
+          shopt -u nullglob
+          if [ -z "$(ls -A upload_fd)" ]; then
+            echo "::error::没有任何 CSV 可上传（可能全部联赛采集失败）"
+            exit 1
+          fi
+          echo "准备上传以下文件到 R2:"
+          ls -1 upload_fd/
+          aws s3 sync upload_fd/ s3://${{ secrets.R2_BUCKET_NAME }}/52483588/start/football-data/ \
+            --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          echo "::notice::已同步到 R2 前缀 52483588/start/football-data/"
