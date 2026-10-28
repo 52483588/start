@@ -58,7 +58,7 @@ jobs:
             fi
             SEASONS="${PREV},${CUR}"
           else
-            SEASONS="2526"
+            SEASONS="2627"
           fi
 
 
