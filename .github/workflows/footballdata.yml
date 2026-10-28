@@ -22,7 +22,7 @@ jobs:
       - name: Fetch per-league CSVs (season 2627)
         env:
           LEAGUE: ${{ github.event.inputs.league || 'E0,E1,D1,D2,I1,I2,SP1,SP2,F1,F2,P1,SC0,NL1,B1,GR1,T1,DK1,NO1,BR1,CI1' }}
-          SEASONS: '2526'
+          SEASONS: '2627'
         run: |
           set -u
           echo "Python: $(python3 --version 2>&1)"
@@ -39,7 +39,7 @@ jobs:
             python3 -u fetch_data.py footballdata \
               --league "$L" \
               --seasons "$SEASONS" \
-              --out "${L}.history.CSV" || echo "::warning::$L 采集失败，跳过"
+              --out "${L}.CSV" || echo "::warning::$L 采集失败，跳过"
           done
           echo "--- 根目录生成的 CSV ---"
           ls -1 *.CSV 2>/dev/null || echo "没有任何 CSV 生成"
