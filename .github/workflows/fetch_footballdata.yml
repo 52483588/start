@@ -45,20 +45,9 @@ jobs:
           if [ -n "${{ github.event.inputs.seasons }}" ]; then
             SEASONS="${{ github.event.inputs.seasons }}"
           elif [ "$MODE" = "weekly" ]; then
-            # 当前赛季跨年：8 月前属于上一赛季
-            YR=$(date +%y)
-            M=$(date +%-m)
-            if [ "$M" -lt 8 ]; then
-              CUR=$(printf "%02d%02d" $((10#$YR - 1)) $YR)
-              PREV=$(printf "%02d%02d" $((10#$YR - 2)) $((10#$YR - 1)))
-            else
-              NY=$((10#$YR + 1))
-              CUR="${YR}${NY}"
-              PREV=$(printf "%02d%02d" $((10#$YR - 1)) $YR)
-            fi
-            SEASONS="${PREV},${CUR}"
-          else
             SEASONS="2627"
+          else
+            SEASONS="2526"
           fi
 
 
@@ -107,3 +96,4 @@ jobs:
           name: ${{ steps.cfg.outputs.art }}
           path: ${{ steps.cfg.outputs.out }}
           retention-days: ${{ fromJSON(github.event.inputs.keep_artifact_days || '90') }}
+
