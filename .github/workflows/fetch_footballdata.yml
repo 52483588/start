@@ -58,7 +58,7 @@ jobs:
             fi
             SEASONS="${PREV},${CUR}"
           else
-            SEASONS="2425,2526"
+            SEASONS="2526"
           fi
 
 
@@ -78,7 +78,7 @@ jobs:
 
       - name: Run fetcher
         env:
-          LEAGUE: ${{ github.event.inputs.league || 'E0,E1,D1,D2,I1,I2,SP1,SP2,F1,F2,P1,SW1,J1,J2,K1,K2' }}
+          LEAGUE: ${{ github.event.inputs.league || 'E0,E1,D1,D2,I1,I2,SP1,SP2,F1,F2,P1,SC0,NL1,B1,GR1,T1,DK1,NO1,BR1,CI1' }}
           SEASONS: ${{ steps.cfg.outputs.seasons }}
           OUT: ${{ steps.cfg.outputs.out }}
         run: |
