@@ -6,7 +6,7 @@ on:
       league:
         description: '联赛代码逗号分隔（固定采集 2627 赛季；留空用默认21个）'
         required: false
-        default: 'E0,E1,D1,D2,I1,I2,SP1,SP2,F1,F2,P1,SC0,NL1,B1,GR1,T1,DK1,NO1,BR1,CI1'
+        default: 'E0,E1,D1,D2,I1,I2,SP1,SP2,F1,F2,P1,SC0,N1,B1,G1,T1'
 
 permissions:
   contents: read
@@ -21,7 +21,7 @@ jobs:
 
       - name: Fetch per-league CSVs (season 2627)
         env:
-          LEAGUE: ${{ github.event.inputs.league || 'E0,E1,D1,D2,I1,I2,SP1,SP2,F1,F2,P1,SC0,NL1,B1,GR1,T1,DK1,NO1,BR1,CI1' }}
+          LEAGUE: ${{ github.event.inputs.league || 'E0,E1,D1,D2,I1,I2,SP1,SP2,F1,F2,P1,SC0,N1,B1,G1,T1' }}
           SEASONS: '2627'
         run: |
           set -u
