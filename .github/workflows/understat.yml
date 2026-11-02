@@ -26,8 +26,8 @@ on:
         required: false
         default: '2026'
   # 每周一 04:17 UTC 自动周更 2026 赛季（取消注释即停用）
-  schedule:
-    - cron: '17 4 * * 1'
+  # schedule:
+  #  - cron: '17 4 * * 1'
 
 permissions:
   contents: read
