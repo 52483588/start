@@ -1,0 +1,97 @@
+# .github/workflows/fetch_understat.yml
+#
+# 在 GitHub 托管的 runner 上抓取 understat.com 的联赛原始 JSON（xG / npxG / 前场推进），
+# 存为 data/us_<League>_<Year>.json，与本地 gap_tool.html 直接对接（支持多选合并）。
+#
+# 关键点：
+#   1. GitHub runner 直连公网，不经过本机代理 —— 正好绕开本地访问 understat 偶发的网络坑。
+#   2. fetch_understat.py 只用标准库（urllib/gzip/json），无需 pip install。
+#   3. 数据通过 artifact 上传，每次运行都能在 Actions 页面下载 data/ 整目录。
+#   4. runner 自带 python3，无需 setup-python；runs-on 固定 ubuntu-24.04。
+#   5. --year auto 用 runner 当前 UTC 年份，即「赛季起始年」：2026 → 2026/27 赛季。
+#      所以 weekly 模式下它永远抓「正在进行」的那个赛季，跨年自动切到下个赛季。
+#
+# ⚠️ 前置：必须把 fetch_understat.py 提交到【仓库根目录】（与 .github/ 同级），
+#    否则会报 "can't open file 'fetch_understat.py'"，退出码 2。
+#
+# 联赛：默认 5 大联赛（EPL / La_Liga / Bundesliga / Serie_A / Ligue_1）。
+# 说明：understat 数据【不含真实庄家赔率】。要做 EV/Kelly 请用 football-data 的 CSV
+#       （fetch_footballdata.yml）。本 workflow 只负责 xG 类过程指标。
+
+name: Fetch understat (xG) data
+
+on:
+  workflow_dispatch:
+    inputs:
+      league:
+        description: '联赛：all=5大联赛；或 EPL,La_Liga,Bundesliga,Serie_A,Ligue_1 逗号分隔'
+        required: false
+        default: 'all'
+      year:
+        description: '赛季起始年；auto=当前年(进行中赛季)；或 2025,2026 逗号分隔'
+        required: false
+        default: 'auto'
+      keep_artifact_days:
+        description: 'artifact 保留天数'
+        required: false
+        default: '90'
+  # 每周日 06:00 UTC 自动刷新「当前进行中赛季」（取消注释即启用）
+  schedule:
+    - cron: '0 6 * * 0'
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute config (league / year / artifact)
+        id: cfg
+        run: |
+          set -u
+          LEAGUE="${{ github.event.inputs.league }}"
+          YEAR="${{ github.event.inputs.year }}"
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            LEAGUE="all"; YEAR="auto"
+          fi
+          [ -z "$LEAGUE" ] && LEAGUE="all"
+          [ -z "$YEAR" ] && YEAR="auto"
+          echo "league=$LEAGUE" >> "$GITHUB_OUTPUT"
+          echo "year=$YEAR" >> "$GITHUB_OUTPUT"
+          echo "art=understat-data" >> "$GITHUB_OUTPUT"
+          echo "::notice::league=$LEAGUE year=$YEAR"
+
+      - name: Run fetcher
+        env:
+          LEAGUE: ${{ steps.cfg.outputs.league }}
+          YEAR: ${{ steps.cfg.outputs.year }}
+        run: |
+          set -u
+          echo "Python: $(python3 --version 2>&1)"
+          if [ ! -f fetch_understat.py ]; then
+            echo "::error::仓库根目录找不到 fetch_understat.py！请把它和本 workflow 一起提交（与 .github/ 同级）。"
+            ls -la
+            exit 1
+          fi
+          mkdir -p data
+          python3 -u fetch_understat.py \
+            --league "$LEAGUE" \
+            --year "$YEAR" \
+            --out-dir data
+
+      - name: List output
+        if: always()
+        run: ls -la data/ | grep -E 'us_.*\.json' || true
+
+      - name: Upload data/ as artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.cfg.outputs.art }}
+          path: data/
+          retention-days: ${{ fromJSON(github.event.inputs.keep_artifact_days || '90') }}
