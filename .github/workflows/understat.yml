@@ -1,0 +1,85 @@
+name: Sync understat → R2
+
+# 在 GitHub runner（国外，直连 understat.com 不受本机网络限制）抓取 understat 原始 JSON，
+# 上传到 Cloudflare R2；本机用 sync_understat_r2.bat 从 R2 下载到本地。
+# 与 football-data 的 workflow 放在【同一个仓库】，复用同一套 R2 Secrets，仅 R2 前缀不同。
+#
+# Secrets（Repo Settings → Secrets → Actions，与 football-data 完全一致，无需重配）：
+#   R2_ACCESS_KEY_ID      R2 API 令牌 ID
+#   R2_SECRET_ACCESS_KEY  R2 API 令牌密钥
+#   R2_BUCKET_NAME        桶名（默认 my-github-backup）
+#   R2_ACCOUNT_ID         Cloudflare 账户 ID（endpoint 由此拼出）
+#
+# 前置：仓库根目录需同时存在 fetch_understat.py（纯标准库，无 pip 依赖，输出 us_<L>_<Y>.json）。
+# 联赛代码：all（5 大联赛 EPL/La_Liga/Bundesliga/Serie_A/Ligue_1）或逗号分隔指定。
+# 年份含义：understat 的 year 是赛季起始年。2026 = 2026/27 赛季（当前进行中）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      league:
+        description: '联赛: all（5大联赛）或 EPL,La_Liga,Bundesliga,Serie_A,Ligue_1'
+        required: false
+        default: 'all'
+      year:
+        description: '赛季起始年（2026=2026/27）；逗号分隔可多季'
+        required: false
+        default: '2026'
+  # 每周一 04:17 UTC 自动周更 2026 赛季（取消注释即停用）
+  # schedule:
+  #  - cron: '17 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch understat JSON (season 2026)
+        env:
+          LEAGUE: ${{ github.event.inputs.league || 'all' }}
+          YEAR: ${{ github.event.inputs.year || '2026' }}
+        run: |
+          set -u
+          echo "Python: $(python3 --version 2>&1)"
+          if [ ! -f fetch_understat.py ]; then
+            echo "::error::仓库根目录找不到 fetch_understat.py！请与 .github/ 同级提交。"
+            ls -la
+            exit 1
+          fi
+          mkdir -p upload_us
+          python3 -u fetch_understat.py --league "$LEAGUE" --year "$YEAR" --out-dir upload_us
+
+      - name: List output
+        if: always()
+        run: |
+          ls -la upload_us/ 2>/dev/null || echo "（无 JSON 文件）"
+          echo "--- 文件清单 ---"
+          ls -1 upload_us/*.json 2>/dev/null || echo "没有任何 JSON 生成"
+
+      - name: 验证 AWS CLI
+        run: aws --version
+
+      - name: 上传到 Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -u
+          if [ -z "$(ls -A upload_us 2>/dev/null)" ]; then
+            echo "::error::没有任何 JSON 可上传（可能全部联赛采集失败）"
+            exit 1
+          fi
+          echo "准备上传以下文件到 R2:"
+          ls -1 upload_us/
+          # 不用 --delete：保留 R2 上已存的 understat 历史数据，仅增量补充本次赛季
+          aws s3 sync upload_us/ s3://${{ secrets.R2_BUCKET_NAME }}/52483588/start/understat-data/ \
+            --endpoint-url=https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+            --delete
+          echo "::notice::已同步到 R2 前缀 52483588/start/understat-data/（增量上传，保留历史）"
